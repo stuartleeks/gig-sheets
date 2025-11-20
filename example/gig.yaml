@@ -1,0 +1,10 @@
+name: Sample Gig
+sets:
+  - name: set1
+    songs:
+      - song1
+      - song2
+  - name: set2
+    songs:
+      - song3
+      - song4

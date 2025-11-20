@@ -1,0 +1,9 @@
+songs:
+  - nickname: song1
+    image: images/song1.png
+  - nickname: song2
+    image: images/song2.png
+  - nickname: song3
+    image: images/song3.png
+  - nickname: song4 
+    image: images/song4.png
