@@ -18,6 +18,15 @@ func CheckForUpdate(currentVersion string) (*selfupdate.Release, error) {
 		return nil, fmt.Errorf("error occurred while detecting version: %v", err)
 	}
 
+	// If current version is "dev" or not a valid semver, treat it as outdated
+	// This allows local builds to check for updates
+	if currentVersion == "dev" || currentVersion == "" {
+		if found {
+			return latest, nil
+		}
+		return nil, nil
+	}
+
 	v, err := semver.Parse(currentVersion)
 	if err != nil {
 		return nil, fmt.Errorf("error occurred while parsing version: %v", err)
