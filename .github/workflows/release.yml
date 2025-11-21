@@ -32,7 +32,8 @@ jobs:
       run: go test -v ./...
 
     - name: Build
-      run: go build -v ./...
+      run: go build
+      
     - name: Extract repository info
       run: |
         echo "GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
