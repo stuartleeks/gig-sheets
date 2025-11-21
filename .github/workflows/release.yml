@@ -13,10 +13,10 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.25'
 
@@ -46,6 +46,8 @@ jobs:
 
     - name: Test example generation
       run: |
+        ls -al
+        echo "----------------"
         cd example
         ../gigsheets generate --config config.yaml --gig gig.yaml --output test.pdf
         ls -la test.pdf
