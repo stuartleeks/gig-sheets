@@ -1,0 +1,90 @@
+# GoReleaser configuration for gigsheets
+# https://goreleaser.com/customization/
+
+version: 2
+
+project_name: gigsheets
+
+before:
+  hooks:
+    # Clean up any previous builds
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: gigsheets
+    main: ./main.go
+    binary: gigsheets
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Build flags
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: gigsheets
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - SCHEMA_USAGE.md
+      - LICENSE*
+      - example/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "0.1.{{ .Env.GITHUB_RUN_NUMBER }}-SNAPSHOT"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - '^style:'
+  groups:
+    - title: 'New Features'
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: 'Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: "{{ .Env.GITHUB_REPOSITORY_NAME }}"
+  name_template: "v{{ .Version }}"
+  draft: false
+  prerelease: auto
+  make_latest: true
+
+# GitHub Actions artifacts
+# You can disable this if you don't want to upload artifacts
+# artifacts:
+#   - ids: 
+#     - gigsheets

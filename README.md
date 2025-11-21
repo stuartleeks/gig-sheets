@@ -12,11 +12,18 @@ It then generates a PDF containing all the song sheets, organized by sets.
 
 ## Installation
 
+### Prerequisites
+- Go 1.25.1 or later
+
+### From Source
 1. Clone this repository
 2. Build the CLI:
    ```bash
    go build -o gigsheets
    ```
+
+### From GitHub Releases
+Download the latest pre-built binary from the [Releases page](../../releases) for your platform.
 
 ## Usage
 
@@ -108,6 +115,23 @@ To generate a PDF from the example files:
 - Provides clear error messages for missing files or songs
 - Organizes songs by sets without separate title pages
 - No temporary files created - all processing done in memory
+
+## Release Process
+
+This project uses [GoReleaser](https://goreleaser.com/) for automated builds and releases:
+
+- **Automatic releases**: Every push to the `main` branch triggers a release with version `v0.1.<build_number>` (e.g., `v0.1.42`)
+- **Cross-platform builds**: Automatically builds binaries for Linux, macOS, and Windows (both amd64 and arm64)
+- **GitHub Releases**: Releases are automatically published to GitHub with checksums and changelog
+
+### Creating a Release
+
+Simply push to main to trigger an automatic release:
+```bash
+git push origin main
+```
+
+Each push will create a new release with an incrementing build number.
 
 ## Dependencies
 

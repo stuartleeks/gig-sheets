@@ -1,1 +1,31 @@
+# Environment variables
 .env
+
+# Build artifacts
+gigsheets
+/gigsheets
+*.exe
+*.dll
+*.so
+*.dylib
+
+# GoReleaser output
+dist/
+*.tar.gz
+*.zip
+
+# Test outputs
+*.pdf
+example/*.pdf
+test-setup.sh
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
