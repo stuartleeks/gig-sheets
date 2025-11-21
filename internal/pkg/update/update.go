@@ -15,12 +15,12 @@ func CheckForUpdate(currentVersion string) (*selfupdate.Release, error) {
 
 	latest, found, err := selfupdate.DetectLatest("stuartleeks/gig-sheets")
 	if err != nil {
-		return nil, fmt.Errorf("Error occurred while detecting version: %v", err)
+		return nil, fmt.Errorf("error occurred while detecting version: %v", err)
 	}
 
 	v, err := semver.Parse(currentVersion)
 	if err != nil {
-		return nil, fmt.Errorf("Error occurred while parsing version: %v", err)
+		return nil, fmt.Errorf("error occurred while parsing version: %v", err)
 	}
 
 	if !found || latest.Version.LTE(v) {

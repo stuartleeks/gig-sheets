@@ -32,6 +32,7 @@ type Song struct {
 go build -o gigsheets                    # Build binary
 make example                            # Test with sample data
 make build && make example              # Full rebuild + test
+make lint                               # Ensure no linter errors
 ```
 
 **Schema Generation Workflow:**

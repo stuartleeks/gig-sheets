@@ -24,7 +24,7 @@ var updateCmd = &cobra.Command{
 
 		latest, err := update.CheckForUpdate(Version)
 		if err != nil {
-			return fmt.Errorf("Error occurred while checking for updates: %v", err)
+			return fmt.Errorf("error occurred while checking for updates: %v", err)
 		}
 
 		if latest == nil {
@@ -50,10 +50,10 @@ var updateCmd = &cobra.Command{
 
 		exe, err := os.Executable()
 		if err != nil {
-			return fmt.Errorf("Could not locate executable path: %v", err)
+			return fmt.Errorf("could not locate executable path: %v", err)
 		}
 		if err := selfupdate.UpdateTo(latest.AssetURL, exe); err != nil {
-			return fmt.Errorf("Error occurred while updating binary: %v", err)
+			return fmt.Errorf("error occurred while updating binary: %v", err)
 		}
 		fmt.Printf("Successfully updated to version %s\n", latest.Version)
 		return nil
