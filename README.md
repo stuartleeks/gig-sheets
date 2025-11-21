@@ -25,6 +25,31 @@ It then generates a PDF containing all the song sheets, organized by sets.
 ### From GitHub Releases
 Download the latest pre-built binary from the [Releases page](../../releases) for your platform.
 
+
+## Installation
+
+Head to the [latest release page](https://github.com/stuartleeks/gig-sheets/releases/latest) and download the archive for your platform.
+
+Extract `gigsheets` from the archive and place in a folder in your `PATH`.
+
+Or if you just don't care and are happy to run random scripts from the internet:
+
+```bash
+export OS=linux # also darwin
+export ARCH=amd64 # also 386
+wget https://raw.githubusercontent.com/stuartleeks/gig-sheets/main/scripts/install.sh
+chmod +x install.sh
+sudo -E ./install.sh
+```
+
+## Enabling bash completion
+
+To enable bash completion, add the following to you `~/.bashrc` file:
+
+```bash
+source <(gigsheets completion bash)
+```
+
 ## Usage
 
 ### Basic Usage
