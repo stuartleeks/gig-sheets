@@ -70,12 +70,10 @@ type JSONSchema struct {
 }
 
 func generateJSONSchema(config *Config) (*JSONSchema, error) {
-	// Extract song nicknames and their image variants
-	songNicknames := make([]string, 0, len(config.Songs))
+	// Extract song completions including image variants
 	songCompletions := make([]string, 0)
 
 	for _, song := range config.Songs {
-		songNicknames = append(songNicknames, song.Nickname)
 		songCompletions = append(songCompletions, song.Nickname)
 
 		// Add image variants for songs with multiple images

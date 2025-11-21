@@ -195,7 +195,12 @@ func cropImage(imagePath string) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open image: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			// Log the error but don't fail the operation since we're in defer
+			log.Printf("Warning: failed to close file %s: %v", imagePath, err)
+		}
+	}()
 
 	// Decode the image based on file extension
 	var img image.Image
