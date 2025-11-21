@@ -1,13 +1,20 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jung-kurt/gofpdf"
 	"github.com/spf13/cobra"
+	"golang.org/x/image/draw"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,8 +25,9 @@ type Config struct {
 
 // Song represents a song configuration
 type Song struct {
-	Nickname string `yaml:"nickname"`
-	Image    string `yaml:"image"`
+	Nickname string            `yaml:"nickname"`
+	Image    string            `yaml:"image,omitempty"`  // For backward compatibility - single image
+	Images   map[string]string `yaml:"images,omitempty"` // For multiple named images
 }
 
 // Gig represents the structure of gig.yaml
@@ -51,7 +59,7 @@ in the gig file, using image paths from the configuration file.`,
 func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
 	generateCmd.Flags().StringVarP(&gigFile, "gig", "g", "gig.yaml", "Path to gig YAML file")
-	generateCmd.Flags().StringVarP(&outputFile, "output", "o", "example-output.pdf", "Output PDF file path")
+	generateCmd.Flags().StringVarP(&outputFile, "output", "o", "output.pdf", "Output PDF file path")
 }
 
 func runGenerate(cmd *cobra.Command, args []string) {
@@ -106,12 +114,160 @@ func loadGig(filename string) (*Gig, error) {
 	return &gig, nil
 }
 
-func generatePDF(config *Config, gig *Gig, outputPath string) error {
-	// Create a map for quick song lookup
-	songMap := make(map[string]string)
-	for _, song := range config.Songs {
-		songMap[song.Nickname] = song.Image
+// isWhiteOrTransparent checks if a pixel is white or transparent
+func isWhiteOrTransparent(c color.Color) bool {
+	r, g, b, a := c.RGBA()
+
+	// Check if transparent (alpha = 0)
+	if a == 0 {
+		return true
 	}
+
+	// Convert to 8-bit values for easier comparison
+	r8 := uint8(r >> 8)
+	g8 := uint8(g >> 8)
+	b8 := uint8(b >> 8)
+
+	// Check if white (or very close to white)
+	threshold := uint8(240) // Allow slight variations from pure white
+	return r8 >= threshold && g8 >= threshold && b8 >= threshold
+}
+
+// findLeftMostContent finds the leftmost non-white, non-transparent column
+func findLeftMostContent(img image.Image) int {
+	bounds := img.Bounds()
+
+	// Scan from left to right
+	for x := bounds.Min.X; x < bounds.Max.X; x++ {
+		// Check column from top to bottom
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			if !isWhiteOrTransparent(img.At(x, y)) {
+				return x
+			}
+		}
+	}
+
+	// If no content found, return original left boundary
+	return bounds.Min.X
+}
+
+// findTopMostContent finds the topmost non-white, non-transparent row
+func findTopMostContent(img image.Image) int {
+	bounds := img.Bounds()
+
+	// Scan from top to bottom
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		// Check row from left to right
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if !isWhiteOrTransparent(img.At(x, y)) {
+				return y
+			}
+		}
+	}
+
+	// If no content found, return original top boundary
+	return bounds.Min.Y
+}
+
+// findBottomMostContent finds the bottommost non-white, non-transparent row
+func findBottomMostContent(img image.Image) int {
+	bounds := img.Bounds()
+
+	// Scan from bottom to top
+	for y := bounds.Max.Y - 1; y >= bounds.Min.Y; y-- {
+		// Check row from left to right
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if !isWhiteOrTransparent(img.At(x, y)) {
+				return y + 1 // Return the position after the last content row
+			}
+		}
+	}
+
+	// If no content found, return original bottom boundary
+	return bounds.Max.Y
+}
+
+// cropImage crops the image from the top, left, and bottom edges up to the content boundaries
+// Note: We don't crop the right edge to preserve any content that might extend to the edge
+func cropImage(imagePath string) (image.Image, error) {
+	// Open the image file
+	file, err := os.Open(imagePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open image: %w", err)
+	}
+	defer file.Close()
+
+	// Decode the image based on file extension
+	var img image.Image
+	ext := strings.ToLower(filepath.Ext(imagePath))
+	switch ext {
+	case ".png":
+		img, err = png.Decode(file)
+	case ".jpg", ".jpeg":
+		img, err = jpeg.Decode(file)
+	default:
+		// Try to decode as generic image
+		img, _, err = image.Decode(file)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Find the content boundaries
+	bounds := img.Bounds()
+	leftMostX := findLeftMostContent(img)
+	topMostY := findTopMostContent(img)
+	bottomMostY := findBottomMostContent(img)
+
+	// If no cropping needed, return original image
+	if leftMostX <= bounds.Min.X && topMostY <= bounds.Min.Y && bottomMostY >= bounds.Max.Y {
+		return img, nil
+	}
+
+	// Calculate the cropped dimensions
+	croppedWidth := bounds.Max.X - leftMostX
+	croppedHeight := bottomMostY - topMostY
+
+	// Validate dimensions
+	if croppedWidth <= 0 || croppedHeight <= 0 {
+		// If dimensions are invalid, return original image
+		return img, nil
+	}
+
+	// Create cropped image with new dimensions
+	croppedBounds := image.Rect(0, 0, croppedWidth, croppedHeight)
+	croppedImg := image.NewRGBA(croppedBounds)
+
+	// Copy the cropped portion
+	srcRect := image.Rect(leftMostX, topMostY, bounds.Max.X, bottomMostY)
+	draw.Copy(croppedImg, croppedImg.Bounds().Min, img, srcRect, draw.Src, nil)
+
+	return croppedImg, nil
+}
+
+func generatePDF(config *Config, gig *Gig, outputPath string) error {
+	// Create a map for quick song lookup that supports both single and multiple images
+	songMap := make(map[string]map[string]string)
+	for _, song := range config.Songs {
+		imageMap := make(map[string]string)
+
+		// Handle backward compatibility - if single image is specified
+		if song.Image != "" {
+			imageMap["default"] = song.Image
+		}
+
+		// Handle multiple images
+		if song.Images != nil {
+			for name, path := range song.Images {
+				imageMap[name] = path
+			}
+		}
+
+		songMap[song.Nickname] = imageMap
+	}
+
+	// No need for temp files cleanup anymore since we're working in-memory
 
 	// Create PDF
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -150,9 +306,25 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 
 		// Add songs for this set
 		for _, songName := range set.Songs {
-			imagePath, exists := songMap[songName]
+			// Parse song name and image name
+			parts := strings.Split(songName, "#")
+			actualSongName := parts[0]
+			imageName := "default"
+			if len(parts) > 1 {
+				imageName = parts[1]
+			}
+
+			// Look up the song in the map
+			imageMap, exists := songMap[actualSongName]
 			if !exists {
-				log.Printf("Warning: No image found for song '%s'", songName)
+				log.Printf("Warning: No configuration found for song '%s'", actualSongName)
+				continue
+			}
+
+			// Look up the specific image
+			imagePath, exists := imageMap[imageName]
+			if !exists {
+				log.Printf("Warning: No image '%s' found for song '%s'", imageName, actualSongName)
 				continue
 			}
 
@@ -168,8 +340,54 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 				continue
 			}
 
-			// Get image info to determine natural dimensions
-			imageInfo := pdf.RegisterImage(imagePath, "")
+			// Crop the image to remove white/transparent space from top, left, and bottom
+			croppedImg, err := cropImage(imagePath)
+			if err != nil {
+				log.Printf("Warning: Could not crop image %s: %v", imagePath, err)
+				croppedImg = nil // Will use original file path below
+			}
+
+			var imageInfo *gofpdf.ImageInfoType
+			var finalImagePath string
+
+			if croppedImg != nil {
+				// Convert cropped image to bytes buffer for gofpdf
+				var buf bytes.Buffer
+				ext := strings.ToLower(filepath.Ext(imagePath))
+				switch ext {
+				case ".png":
+					err = png.Encode(&buf, croppedImg)
+				case ".jpg", ".jpeg":
+					err = jpeg.Encode(&buf, croppedImg, &jpeg.Options{Quality: 90})
+				default:
+					err = png.Encode(&buf, croppedImg) // Default to PNG
+				}
+
+				if err != nil {
+					log.Printf("Warning: Could not encode cropped image %s: %v", imagePath, err)
+					// Fall back to original file
+					imageInfo = pdf.RegisterImage(imagePath, "")
+					finalImagePath = imagePath
+				} else {
+					// Register the cropped image from bytes buffer
+					croppedImageName := fmt.Sprintf("cropped_%s", songName)
+					imageType := ""
+					switch ext {
+					case ".png":
+						imageType = "PNG"
+					case ".jpg", ".jpeg":
+						imageType = "JPG"
+					default:
+						imageType = "PNG"
+					}
+					imageInfo = pdf.RegisterImageReader(croppedImageName, imageType, &buf)
+					finalImagePath = croppedImageName
+				}
+			} else {
+				// Use original file
+				imageInfo = pdf.RegisterImage(imagePath, "")
+				finalImagePath = imagePath
+			}
 			if imageInfo == nil {
 				log.Printf("Warning: Could not process image: %s", imagePath)
 				continue
@@ -200,7 +418,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 			}
 
 			// Add image without scaling (unless it was too wide)
-			pdf.ImageOptions(imagePath, margin, currentY, imageWidth, imageHeight, false, gofpdf.ImageOptions{}, 0, "")
+			pdf.ImageOptions(finalImagePath, margin, currentY, imageWidth, imageHeight, false, gofpdf.ImageOptions{}, 0, "")
 			currentY += imageHeight + spacing
 		}
 	}

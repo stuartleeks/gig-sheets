@@ -1,9 +1,12 @@
 songs:
   - nickname: song1
-    image: images/song1.png
+    image: images/song1.png  # Single image (backward compatibility)
   - nickname: song2
-    image: images/song2.png
+    images:  # Multiple named images
+      default: images/song2.png
+      v2: images/song2-v2.png
   - nickname: song3
-    image: images/song3.png
+    images:  # Single image using new schema
+      default: images/song3.png
   - nickname: song4 
-    image: images/song4.png
+    image: images/song4.png  # Single image (backward compatibility)

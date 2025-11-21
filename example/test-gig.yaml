@@ -1,0 +1,12 @@
+name: Test Gig - Schema Validation
+sets:
+  - name: set1
+    songs:
+      - song1           # Uses single image (backward compatibility)
+      - song2           # Uses default image from images map
+      - song2#v2        # Uses specific v2 image from images map
+  - name: set2
+    songs:
+      - song3           # Uses default image from images map  
+      - song3#default   # Explicitly uses default image
+      - song4           # Uses single image (backward compatibility)

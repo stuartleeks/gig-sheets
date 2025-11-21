@@ -23,14 +23,14 @@ It then generates a PDF containing all the song sheets, organized by sets.
 ### Basic Usage
 
 ```bash
-./gigsheets generate --config config.yaml --gig gig.yaml --output example-output.pdf
+./gigsheets generate --config config.yaml --gig gig.yaml --output example/output.pdf
 ```
 
 ### Command Options
 
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
 - `--gig, -g`: Path to gig YAML file (default: "gig.yaml")
-- `--output, -o`: Output PDF file path (default: "example-output.pdf")
+- `--output, -o`: Output PDF file path (default: "output.pdf")
 
 ### Configuration File Format
 
@@ -73,13 +73,15 @@ To generate a PDF from the example files:
 
 ## Features
 
+- **Smart image cropping**: Automatically removes white/transparent space from the top, left, and bottom edges of images (in-memory processing)
 - Combines song images efficiently on pages to save space
 - Automatically starts new pages when switching sets or when space is insufficient
 - Adds footers with gig name and page numbers
-- Automatically scales images to fit available space
+- Only scales images when they exceed page width (preserves natural dimensions)
 - Supports PNG, JPEG, and other common image formats
 - Provides clear error messages for missing files or songs
 - Organizes songs by sets without separate title pages
+- No temporary files created - all processing done in memory
 
 ## Dependencies
 

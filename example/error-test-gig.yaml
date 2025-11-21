@@ -1,0 +1,8 @@
+name: Error Test Gig
+sets:
+  - name: set1
+    songs:
+      - song1              # Should work
+      - song2#nonexistent  # Should show warning - image doesn't exist
+      - nonexistent        # Should show warning - song doesn't exist
+      - song2#v2           # Should work
