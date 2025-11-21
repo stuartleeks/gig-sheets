@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gig Configuration Schema",
+  "description": "Schema for gigsheets gig YAML files with autocomplete for songs and image variants",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Name of the gig",
+      "type": "string"
+    },
+    "sets": {
+      "description": "List of sets in the gig",
+      "items": {
+        "properties": {
+          "name": {
+            "description": "Name of the set",
+            "type": "string"
+          },
+          "songs": {
+            "description": "List of songs in the set",
+            "items": {
+              "description": "Song nickname, optionally with image variant (e.g., 'song1' or 'song1#v2')",
+              "enum": [
+                "song1",
+                "song2",
+                "song2#v2",
+                "song3",
+                "song4"
+              ],
+              "examples": [
+                "song1",
+                "song2",
+                "song2#v2",
+                "song3",
+                "song4"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "songs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "sets"
+  ]
+}

@@ -32,16 +32,42 @@ It then generates a PDF containing all the song sheets, organized by sets.
 - `--gig, -g`: Path to gig YAML file (default: "gig.yaml")
 - `--output, -o`: Output PDF file path (default: "output.pdf")
 
+### VS Code Autocomplete Support
+
+Generate a JSON Schema for intelligent autocomplete when editing gig YAML files:
+
+```bash
+./gigsheets generate-schema --config config.yaml --output gig-schema.json
+```
+
+This creates a schema file that enables VS Code to provide:
+- Autocomplete for song nicknames
+- Autocomplete for image variants (e.g., `song#variant`)
+
+To use the schema in VS Code, add to your settings.json:
+```json
+{
+  "yaml.schemas": {
+    "./gig-schema.json": "*.yaml"
+  }
+}
+```
+
+See [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for detailed setup instructions.
+
 ### Configuration File Format
 
-The config file maps song nicknames to image paths:
+The config file maps song nicknames to image paths. Supports both single images and multiple image variants:
 
 ```yaml
 songs:
   - nickname: song1
-    image: images/song1.png
+    image: images/song1.png  # Single image (backward compatibility)
   - nickname: song2
-    image: images/song2.png
+    images:  # Multiple named images
+      default: images/song2.png
+      v2: images/song2-v2.png
+      simplified: images/song2-simple.png
 ```
 
 ### Gig File Format
@@ -54,7 +80,7 @@ sets:
   - name: set1
     songs:
       - song1
-      - song2
+      - song2#v2  # Use specific image variant
   - name: set2
     songs:
       - song3

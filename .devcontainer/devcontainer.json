@@ -7,7 +7,8 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"Tyriar.luna-paint"
+				"Tyriar.luna-paint",
+				"redhat.vscode-yaml"
 			]
 		}
 	}
