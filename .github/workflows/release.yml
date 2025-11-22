@@ -47,11 +47,7 @@ jobs:
 
     - name: Test example generation
       run: |
-        ls -al
-        echo "----------------"
-        cd example
-        ../gigsheets generate --config config.yaml --gig gig.yaml --output test.pdf
-        ls -la test.pdf
+        make example
 
     - name: Create version tag
       run: |

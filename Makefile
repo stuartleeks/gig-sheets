@@ -14,7 +14,7 @@ test:
 
 # Generate example PDF
 example: build
-	./gigsheets generate --config example/config.yaml --gig example/gig.yaml
+	./gigsheets generate --config example/config.yaml
 
 # Install dependencies
 deps:

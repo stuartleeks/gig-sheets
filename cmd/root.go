@@ -25,5 +25,6 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	rootCmd.AddCommand(generateSchemaCmd)
 	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(validateConfigCmd)
 	rootCmd.AddCommand(versionCmd)
 }
