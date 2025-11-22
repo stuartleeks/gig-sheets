@@ -20,7 +20,10 @@ import (
 
 // Config represents the structure of config.yaml
 type Config struct {
-	Songs []Song `yaml:"songs"`
+	ImageFolder  string `yaml:"imageFolder"`
+	GigsFolder   string `yaml:"gigsFolder"`
+	OutputFolder string `yaml:"outputFolder"`
+	Songs        []Song `yaml:"songs"`
 }
 
 // Song represents a song configuration
@@ -44,8 +47,6 @@ type Set struct {
 
 var (
 	configFile string
-	gigFile    string
-	outputFile string
 )
 
 var generateCmd = &cobra.Command{
@@ -58,8 +59,6 @@ in the gig file, using image paths from the configuration file.`,
 
 func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
-	generateCmd.Flags().StringVarP(&gigFile, "gig", "g", "gig.yaml", "Path to gig YAML file")
-	generateCmd.Flags().StringVarP(&outputFile, "output", "o", "output.pdf", "Output PDF file path")
 }
 
 func runGenerate(cmd *cobra.Command, args []string) {
@@ -69,19 +68,56 @@ func runGenerate(cmd *cobra.Command, args []string) {
 		log.Fatalf("Error loading config file: %v", err)
 	}
 
-	// Load gig
-	gig, err := loadGig(gigFile)
+	// Get the config directory for resolving relative paths
+	configDir := filepath.Dir(configFile)
+
+	// Resolve paths relative to config file
+	gigsDir := filepath.Join(configDir, config.GigsFolder)
+	outputDir := filepath.Join(configDir, config.OutputFolder)
+	imagesDir := filepath.Join(configDir, config.ImageFolder)
+
+	// Create output directory if it doesn't exist
+	err = os.MkdirAll(outputDir, 0755)
 	if err != nil {
-		log.Fatalf("Error loading gig file: %v", err)
+		log.Fatalf("Error creating output directory: %v", err)
 	}
 
-	// Generate PDF
-	err = generatePDF(config, gig, outputFile)
+	// Read all gig files from the gigs directory
+	gigFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yaml"))
 	if err != nil {
-		log.Fatalf("Error generating PDF: %v", err)
+		log.Fatalf("Error reading gig files: %v", err)
 	}
 
-	fmt.Printf("Successfully generated PDF: %s\n", outputFile)
+	if len(gigFiles) == 0 {
+		log.Printf("No gig files found in %s", gigsDir)
+		return
+	}
+
+	fmt.Printf("Found %d gig file(s) in %s\n", len(gigFiles), gigsDir)
+
+	// Process each gig file
+	for _, gigFile := range gigFiles {
+		// Load gig
+		gig, err := loadGig(gigFile)
+		if err != nil {
+			log.Printf("Error loading gig file %s: %v", gigFile, err)
+			continue
+		}
+
+		// Generate output filename
+		gigBasename := filepath.Base(gigFile)
+		gigName := strings.TrimSuffix(gigBasename, filepath.Ext(gigBasename))
+		outputFile := filepath.Join(outputDir, gigName+".pdf")
+
+		// Generate PDF
+		err = generatePDF(config, gig, outputFile, imagesDir, gigFile)
+		if err != nil {
+			log.Printf("Error generating PDF for %s: %v", gigFile, err)
+			continue
+		}
+
+		fmt.Printf("Successfully generated PDF: %s\n", outputFile)
+	}
 }
 
 func loadConfig(filename string) (*Config, error) {
@@ -251,7 +287,7 @@ func cropImage(imagePath string) (image.Image, error) {
 	return croppedImg, nil
 }
 
-func generatePDF(config *Config, gig *Gig, outputPath string) error {
+func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string) error {
 	// Create a map for quick song lookup that supports both single and multiple images
 	songMap := make(map[string]map[string]string)
 	for _, song := range config.Songs {
@@ -322,33 +358,32 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 			// Look up the song in the map
 			imageMap, exists := songMap[actualSongName]
 			if !exists {
-				log.Printf("Warning: No configuration found for song '%s'", actualSongName)
+				log.Printf("%s: Warning: No configuration found for song '%s'", gigFile, actualSongName)
 				continue
 			}
 
 			// Look up the specific image
 			imagePath, exists := imageMap[imageName]
 			if !exists {
-				log.Printf("Warning: No image '%s' found for song '%s'", imageName, actualSongName)
+				log.Printf("%s: Warning: No image '%s' found for song '%s'", gigFile, imageName, actualSongName)
 				continue
 			}
 
-			// Make image path relative to config file directory if it's not absolute
+			// Make image path relative to images directory if it's not absolute
 			if !filepath.IsAbs(imagePath) {
-				configDir := filepath.Dir(configFile)
-				imagePath = filepath.Join(configDir, imagePath)
+				imagePath = filepath.Join(imagesDir, imagePath)
 			}
 
 			// Check if image file exists
 			if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-				log.Printf("Warning: Image file not found: %s", imagePath)
+				log.Printf("%s: Warning: Image file not found: %s", gigFile, imagePath)
 				continue
 			}
 
 			// Crop the image to remove white/transparent space from top, left, and bottom
 			croppedImg, err := cropImage(imagePath)
 			if err != nil {
-				log.Printf("Warning: Could not crop image %s: %v", imagePath, err)
+				log.Printf("%s: Warning: Could not crop image %s: %v", gigFile, imagePath, err)
 				croppedImg = nil // Will use original file path below
 			}
 
@@ -369,7 +404,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 				}
 
 				if err != nil {
-					log.Printf("Warning: Could not encode cropped image %s: %v", imagePath, err)
+					log.Printf("%s: Warning: Could not encode cropped image %s: %v", gigFile, imagePath, err)
 					// Fall back to original file
 					imageInfo = pdf.RegisterImage(imagePath, "")
 					finalImagePath = imagePath
@@ -394,7 +429,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string) error {
 				finalImagePath = imagePath
 			}
 			if imageInfo == nil {
-				log.Printf("Warning: Could not process image: %s", imagePath)
+				log.Printf("%s: Warning: Could not process image: %s", gigFile, imagePath)
 				continue
 			}
 

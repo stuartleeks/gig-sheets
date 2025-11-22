@@ -1,12 +1,15 @@
+imageFolder: images
+gigsFolder: gigs
+outputFolder: pdf
 songs:
   - nickname: song1
-    image: images/song1.png  # Single image (backward compatibility)
+    image: song1.png  # Single image (backward compatibility)
   - nickname: song2
     images:  # Multiple named images
-      default: images/song2.png
-      v2: images/song2-v2.png
+      default: song2.png
+      v2: song2-v2.png
   - nickname: song3
     images:  # Single image using new schema
-      default: images/song3.png
+      default: song3.png
   - nickname: song4 
-    image: images/song4.png  # Single image (backward compatibility)
+    image: song4.png  # Single image (backward compatibility)
