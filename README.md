@@ -54,17 +54,30 @@ source <(gigsheets completion bash)
 
 ### Basic Usage
 
+Generate PDFs from all gig files in the configured gigs folder:
+
 ```bash
-./gigsheets generate --config config.yaml --gig gig.yaml --output example/output.pdf
+./gigsheets generate --config config.yaml
 ```
+
+### Watch Mode
+
+Automatically regenerate PDFs when config or gig files change:
+
+```bash
+./gigsheets generate --config config.yaml --watch
+```
+
+This is particularly useful during development - the tool will monitor your config file and all gig files, regenerating PDFs automatically whenever you save changes.
 
 ### Command Options
 
 #### generate
 
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
-- `--gig, -g`: Path to gig YAML file (default: "gig.yaml")
-- `--output, -o`: Output PDF file path (default: "output.pdf")
+- `--watch, -w`: Watch for changes and regenerate automatically
+
+When using watch mode, the tool will monitor both the config file and all gig files in the gigs folder. Any changes to these files will automatically trigger PDF regeneration.
 
 #### generate-schema
 
@@ -143,10 +156,16 @@ sets:
 
 See the `example/` directory for sample configuration and gig files.
 
-To generate a PDF from the example files:
+To generate PDFs from the example files:
 
 ```bash
-./gigsheets generate --config example/config.yaml --gig example/gig.yaml
+./gigsheets generate --config example/config.yaml
+```
+
+Or use watch mode during development:
+
+```bash
+./gigsheets generate --config example/config.yaml --watch
 ```
 
 ## Features

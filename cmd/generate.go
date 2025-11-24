@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/jung-kurt/gofpdf"
 	"github.com/spf13/cobra"
 	"golang.org/x/image/draw"
@@ -47,6 +49,7 @@ type Set struct {
 
 var (
 	configFile string
+	watchMode  bool
 )
 
 var generateCmd = &cobra.Command{
@@ -59,13 +62,117 @@ in the gig file, using image paths from the configuration file.`,
 
 func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
+	generateCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and regenerate automatically")
 }
 
 func runGenerate(cmd *cobra.Command, args []string) {
-	// Load configuration
+	if watchMode {
+		runGenerateWatch()
+	} else {
+		runGenerateOnce()
+	}
+}
+
+func runGenerateOnce() {
+	err := generateAllGigs()
+	if err != nil {
+		log.Fatalf("Error generating PDFs: %v", err)
+	}
+}
+
+func runGenerateWatch() {
+	// Initial generation
+	fmt.Println("Initial PDF generation...")
+	err := generateAllGigs()
+	if err != nil {
+		log.Printf("Error during initial generation: %v", err)
+	}
+
+	// Get the config directory for resolving relative paths
+	configDir := filepath.Dir(configFile)
+
+	// Load config to get gigs folder
 	config, err := loadConfig(configFile)
 	if err != nil {
 		log.Fatalf("Error loading config file: %v", err)
+	}
+
+	gigsDir := filepath.Join(configDir, config.GigsFolder)
+
+	// Set up file watcher
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatalf("Error creating watcher: %v", err)
+	}
+	defer func() {
+		if err := watcher.Close(); err != nil {
+			log.Printf("Error closing watcher: %v", err)
+		}
+	}()
+
+	// Watch config file
+	err = watcher.Add(configFile)
+	if err != nil {
+		log.Fatalf("Error watching config file: %v", err)
+	}
+
+	// Watch gigs directory
+	err = watcher.Add(gigsDir)
+	if err != nil {
+		log.Fatalf("Error watching gigs directory: %v", err)
+	}
+
+	fmt.Printf("\nWatching for changes...\n")
+	fmt.Printf("  Config: %s\n", configFile)
+	fmt.Printf("  Gigs:   %s\n", gigsDir)
+	fmt.Println("\nPress Ctrl+C to stop")
+
+	// Debounce timer to avoid multiple regenerations for rapid file changes
+	var debounceTimer *time.Timer
+	debounceDuration := 500 * time.Millisecond
+
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+
+			// Only process write and create events
+			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
+				// Cancel existing timer if any
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+
+				// Set new timer
+				debounceTimer = time.AfterFunc(debounceDuration, func() {
+					fmt.Printf("\n[%s] Change detected in: %s\n", time.Now().Format("15:04:05"), filepath.Base(event.Name))
+					fmt.Println("Regenerating PDFs...")
+
+					err := generateAllGigs()
+					if err != nil {
+						log.Printf("Error generating PDFs: %v", err)
+					} else {
+						fmt.Println("✓ PDFs regenerated successfully")
+					}
+				})
+			}
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("Watcher error: %v", err)
+		}
+	}
+}
+
+func generateAllGigs() error {
+	// Load configuration
+	config, err := loadConfig(configFile)
+	if err != nil {
+		return fmt.Errorf("error loading config file: %w", err)
 	}
 
 	// Get the config directory for resolving relative paths
@@ -79,23 +186,23 @@ func runGenerate(cmd *cobra.Command, args []string) {
 	// Create output directory if it doesn't exist
 	err = os.MkdirAll(outputDir, 0755)
 	if err != nil {
-		log.Fatalf("Error creating output directory: %v", err)
+		return fmt.Errorf("error creating output directory: %w", err)
 	}
 
 	// Read all gig files from the gigs directory (both .yaml and .yml)
 	yamlFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yaml"))
 	if err != nil {
-		log.Fatalf("Error reading gig files: %v", err)
+		return fmt.Errorf("error reading gig files: %w", err)
 	}
 	ymlFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yml"))
 	if err != nil {
-		log.Fatalf("Error reading gig files: %v", err)
+		return fmt.Errorf("error reading gig files: %w", err)
 	}
 	gigFiles := append(yamlFiles, ymlFiles...)
 
 	if len(gigFiles) == 0 {
 		log.Printf("No gig files found in %s", gigsDir)
-		return
+		return nil
 	}
 
 	fmt.Printf("Found %d gig file(s) in %s\n", len(gigFiles), gigsDir)
@@ -123,6 +230,8 @@ func runGenerate(cmd *cobra.Command, args []string) {
 
 		fmt.Printf("Successfully generated PDF: %s\n", outputFile)
 	}
+
+	return nil
 }
 
 func loadConfig(filename string) (*Config, error) {
