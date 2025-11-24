@@ -82,11 +82,16 @@ func runGenerate(cmd *cobra.Command, args []string) {
 		log.Fatalf("Error creating output directory: %v", err)
 	}
 
-	// Read all gig files from the gigs directory
-	gigFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yaml"))
+	// Read all gig files from the gigs directory (both .yaml and .yml)
+	yamlFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yaml"))
 	if err != nil {
 		log.Fatalf("Error reading gig files: %v", err)
 	}
+	ymlFiles, err := filepath.Glob(filepath.Join(gigsDir, "*.yml"))
+	if err != nil {
+		log.Fatalf("Error reading gig files: %v", err)
+	}
+	gigFiles := append(yamlFiles, ymlFiles...)
 
 	if len(gigFiles) == 0 {
 		log.Printf("No gig files found in %s", gigsDir)
