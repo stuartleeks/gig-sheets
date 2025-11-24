@@ -401,6 +401,36 @@ func cropImage(imagePath string) (image.Image, error) {
 	return croppedImg, nil
 }
 
+// addErrorText adds red error text to the PDF at the current position
+func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, margin, footerHeight float64, errorMsg string, addFooter func()) {
+	errorHeight := 10.0 // Height for error message
+	spacing := 5.0
+
+	// Calculate available space on current page
+	remainingHeight := pageHeight - footerHeight - margin - *currentY
+
+	// Check if we need a new page
+	if remainingHeight < errorHeight+spacing {
+		pdf.AddPage()
+		addFooter()
+		*currentY = margin
+	}
+
+	// Set red text color (RGB: 255, 0, 0)
+	pdf.SetTextColor(255, 0, 0)
+	pdf.SetFont("Arial", "B", 12)
+
+	// Add the error message
+	pdf.SetXY(margin, *currentY)
+	pdf.MultiCell(pageWidth-2*margin, errorHeight, errorMsg, "", "L", false)
+
+	// Reset text color to black for subsequent content
+	pdf.SetTextColor(0, 0, 0)
+
+	// Update current Y position
+	*currentY += errorHeight + spacing
+}
+
 func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string) error {
 	// Create a map for quick song lookup that supports both single and multiple images
 	songMap := make(map[string]map[string]string)
@@ -472,14 +502,18 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			// Look up the song in the map
 			imageMap, exists := songMap[actualSongName]
 			if !exists {
-				log.Printf("%s: Warning: No configuration found for song '%s'", gigFile, actualSongName)
+				errorMsg := fmt.Sprintf("ERROR: No configuration found for song '%s'", actualSongName)
+				log.Printf("%s: Warning: %s", gigFile, errorMsg)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
 				continue
 			}
 
 			// Look up the specific image
 			imagePath, exists := imageMap[imageName]
 			if !exists {
-				log.Printf("%s: Warning: No image '%s' found for song '%s'", gigFile, imageName, actualSongName)
+				errorMsg := fmt.Sprintf("ERROR: No image '%s' found for song '%s'", imageName, actualSongName)
+				log.Printf("%s: Warning: %s", gigFile, errorMsg)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
 				continue
 			}
 
@@ -490,7 +524,9 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 
 			// Check if image file exists
 			if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-				log.Printf("%s: Warning: Image file not found: %s", gigFile, imagePath)
+				errorMsg := fmt.Sprintf("ERROR: Image file not found: %s", imagePath)
+				log.Printf("%s: Warning: %s", gigFile, errorMsg)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
 				continue
 			}
 
