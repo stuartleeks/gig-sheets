@@ -60,9 +60,17 @@ source <(gigsheets completion bash)
 
 ### Command Options
 
+#### generate
+
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
 - `--gig, -g`: Path to gig YAML file (default: "gig.yaml")
 - `--output, -o`: Output PDF file path (default: "output.pdf")
+
+#### generate-schema
+
+- `--config, -c`: Path to config YAML file (default: "config.yaml")
+- `--output, -o`: Output JSON Schema file path (default: "gig-schema.json")
+- `--watch, -w`: Watch config file for changes and regenerate schema automatically
 
 ### VS Code Autocomplete Support
 
@@ -75,6 +83,18 @@ Generate a JSON Schema for intelligent autocomplete when editing gig YAML files:
 This creates a schema file that enables VS Code to provide:
 - Autocomplete for song nicknames
 - Autocomplete for image variants (e.g., `song#variant`)
+
+#### Watch Mode
+
+For development, you can use watch mode to automatically regenerate the schema when your config file changes:
+
+```bash
+./gigsheets generate-schema --config config.yaml --output gig-schema.json --watch
+```
+
+The command will continue running and regenerate the schema whenever it detects changes to the config file.
+
+#### VS Code Setup
 
 To use the schema in VS Code, add to your settings.json:
 ```json

@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
 
 var (
 	schemaConfigFile string
 	schemaOutputFile string
+	schemaWatch      bool
 )
 
 var generateSchemaCmd = &cobra.Command{
@@ -26,37 +28,116 @@ The schema includes completion for song nicknames and image variants based on th
 func init() {
 	generateSchemaCmd.Flags().StringVarP(&schemaConfigFile, "config", "c", "config.yaml", "Path to config YAML file")
 	generateSchemaCmd.Flags().StringVarP(&schemaOutputFile, "output", "o", "gig-schema.json", "Output JSON Schema file path")
+	generateSchemaCmd.Flags().BoolVarP(&schemaWatch, "watch", "w", false, "Watch config file for changes and regenerate schema automatically")
 }
 
 func runGenerateSchema(cmd *cobra.Command, args []string) {
+	// Generate schema once
+	if err := generateAndWriteSchema(); err != nil {
+		log.Fatalf("Error generating schema: %v", err)
+	}
+
+	// If watch mode is enabled, watch for changes
+	if schemaWatch {
+		watchConfigFile()
+	}
+}
+
+func generateAndWriteSchema() error {
 	// Load configuration to extract song nicknames and image variants
 	config, err := loadConfig(schemaConfigFile)
 	if err != nil {
-		log.Fatalf("Error loading config file: %v", err)
+		return fmt.Errorf("error loading config file: %w", err)
 	}
 
 	// Generate the JSON Schema
 	schema, err := generateJSONSchema(config)
 	if err != nil {
-		log.Fatalf("Error generating schema: %v", err)
+		return fmt.Errorf("error generating schema: %w", err)
 	}
 
 	// Write schema to file
 	err = writeSchemaFile(schema, schemaOutputFile)
 	if err != nil {
-		log.Fatalf("Error writing schema file: %v", err)
+		return fmt.Errorf("error writing schema file: %w", err)
 	}
 
 	fmt.Printf("Successfully generated JSON Schema: %s\n", schemaOutputFile)
-	fmt.Println("To use in VS Code, add this to your settings.json:")
 
-	absPath, err := filepath.Abs(schemaOutputFile)
-	if err != nil {
-		absPath = schemaOutputFile
-	}
-	fmt.Printf(`"yaml.schemas": {
+	if !schemaWatch {
+		// Only show VS Code instructions once in non-watch mode
+		fmt.Println("To use in VS Code, add this to your settings.json:")
+
+		absPath, err := filepath.Abs(schemaOutputFile)
+		if err != nil {
+			absPath = schemaOutputFile
+		}
+		fmt.Printf(`"yaml.schemas": {
   "%s": "*.yaml"
 }`, absPath)
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func watchConfigFile() {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatalf("Error creating file watcher: %v", err)
+	}
+	defer func() {
+		if err := watcher.Close(); err != nil {
+			log.Printf("Error closing watcher: %v", err)
+		}
+	}()
+
+	// Get absolute path of config file for watching
+	absConfigPath, err := filepath.Abs(schemaConfigFile)
+	if err != nil {
+		log.Fatalf("Error resolving config file path: %v", err)
+	}
+
+	// Watch the directory containing the config file
+	// This helps handle cases where editors replace files (create temp + rename)
+	configDir := filepath.Dir(absConfigPath)
+	configFileName := filepath.Base(absConfigPath)
+
+	err = watcher.Add(configDir)
+	if err != nil {
+		log.Fatalf("Error watching config directory: %v", err)
+	}
+
+	fmt.Printf("Watching %s for changes... (press Ctrl+C to stop)\n", absConfigPath)
+
+	// Watch for events
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+
+			// Only process events for our config file
+			if filepath.Base(event.Name) != configFileName {
+				continue
+			}
+
+			// React to write or create events
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+				fmt.Printf("\nDetected change in %s, regenerating schema...\n", event.Name)
+				if err := generateAndWriteSchema(); err != nil {
+					log.Printf("Error regenerating schema: %v", err)
+				}
+			}
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("Watcher error: %v", err)
+		}
+	}
 }
 
 // JSONSchema represents the structure of a JSON Schema
