@@ -75,6 +75,7 @@ This is particularly useful during development - the tool will monitor your conf
 #### generate
 
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
+- `--spacing, -s`: Spacing between images in mm (default: 5.0, or value from config)
 - `--watch, -w`: Watch for changes and regenerate automatically
 
 When using watch mode, the tool will monitor both the config file and all gig files in the gigs folder. Any changes to these files will automatically trigger PDF regeneration.
@@ -125,6 +126,10 @@ See [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for detailed setup instructions.
 The config file maps song nicknames to image paths. Supports both single images and multiple image variants:
 
 ```yaml
+imageFolder: images
+gigsFolder: gigs
+outputFolder: pdf
+spacing: 7.5  # Optional: spacing between images in mm (default: 5.0)
 songs:
   - nickname: song1
     image: images/song1.png  # Single image (backward compatibility)
@@ -134,6 +139,16 @@ songs:
       v2: images/song2-v2.png
       simplified: images/song2-simple.png
 ```
+
+#### Spacing Configuration
+
+You can configure the spacing between images in the PDF in three ways (in order of priority):
+
+1. **Command-line flag**: `--spacing 10.0` (highest priority)
+2. **Config file**: `spacing: 7.5` in your config.yaml
+3. **Default value**: 5.0 mm (if not specified)
+
+The command-line flag overrides the config file value, which in turn overrides the default.
 
 ### Gig File Format
 

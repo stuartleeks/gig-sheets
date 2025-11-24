@@ -22,10 +22,11 @@ import (
 
 // Config represents the structure of config.yaml
 type Config struct {
-	ImageFolder  string `yaml:"imageFolder"`
-	GigsFolder   string `yaml:"gigsFolder"`
-	OutputFolder string `yaml:"outputFolder"`
-	Songs        []Song `yaml:"songs"`
+	ImageFolder  string   `yaml:"imageFolder"`
+	GigsFolder   string   `yaml:"gigsFolder"`
+	OutputFolder string   `yaml:"outputFolder"`
+	Spacing      *float64 `yaml:"spacing,omitempty"` // Optional spacing between images
+	Songs        []Song   `yaml:"songs"`
 }
 
 // Song represents a song configuration
@@ -48,8 +49,9 @@ type Set struct {
 }
 
 var (
-	configFile string
-	watchMode  bool
+	configFile  string
+	watchMode   bool
+	spacingFlag *float64 // Pointer to distinguish between unset and 0
 )
 
 var generateCmd = &cobra.Command{
@@ -63,9 +65,18 @@ in the gig file, using image paths from the configuration file.`,
 func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
 	generateCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and regenerate automatically")
+
+	// Use a local variable for the flag, then assign to spacingFlag in runGenerate
+	generateCmd.Flags().Float64P("spacing", "s", -1, "Spacing between images in mm (default: 5.0, or value from config)")
 }
 
 func runGenerate(cmd *cobra.Command, args []string) {
+	// Get the spacing flag value
+	spacingValue, _ := cmd.Flags().GetFloat64("spacing")
+	if spacingValue >= 0 {
+		spacingFlag = &spacingValue
+	}
+
 	if watchMode {
 		runGenerateWatch()
 	} else {
@@ -168,12 +179,34 @@ func runGenerateWatch() {
 	}
 }
 
+// resolveSpacing determines the spacing value to use based on priority:
+// 1. Command-line flag (if set)
+// 2. Config file value (if set)
+// 3. Default value (5.0)
+func resolveSpacing(config *Config) float64 {
+	// Priority 1: Command-line flag
+	if spacingFlag != nil {
+		return *spacingFlag
+	}
+
+	// Priority 2: Config file
+	if config.Spacing != nil {
+		return *config.Spacing
+	}
+
+	// Priority 3: Default
+	return 5.0
+}
+
 func generateAllGigs() error {
 	// Load configuration
 	config, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config file: %w", err)
 	}
+
+	// Resolve the spacing value
+	spacing := resolveSpacing(config)
 
 	// Get the config directory for resolving relative paths
 	configDir := filepath.Dir(configFile)
@@ -222,7 +255,7 @@ func generateAllGigs() error {
 		outputFile := filepath.Join(outputDir, gigName+".pdf")
 
 		// Generate PDF
-		err = generatePDF(config, gig, outputFile, imagesDir, gigFile)
+		err = generatePDF(config, gig, outputFile, imagesDir, gigFile, spacing)
 		if err != nil {
 			log.Printf("Error generating PDF for %s: %v", gigFile, err)
 			continue
@@ -402,9 +435,8 @@ func cropImage(imagePath string) (image.Image, error) {
 }
 
 // addErrorText adds red error text to the PDF at the current position
-func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, margin, footerHeight float64, errorMsg string, addFooter func()) {
+func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, margin, footerHeight, spacing float64, errorMsg string, addFooter func()) {
 	errorHeight := 10.0 // Height for error message
-	spacing := 5.0
 
 	// Calculate available space on current page
 	remainingHeight := pageHeight - footerHeight - margin - *currentY
@@ -431,7 +463,7 @@ func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, ma
 	*currentY += errorHeight + spacing
 }
 
-func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string) error {
+func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string, spacing float64) error {
 	// Create a map for quick song lookup that supports both single and multiple images
 	songMap := make(map[string]map[string]string)
 	for _, song := range config.Songs {
@@ -504,7 +536,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if !exists {
 				errorMsg := fmt.Sprintf("ERROR: No configuration found for song '%s'", actualSongName)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
 				continue
 			}
 
@@ -513,7 +545,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if !exists {
 				errorMsg := fmt.Sprintf("ERROR: No image '%s' found for song '%s'", imageName, actualSongName)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
 				continue
 			}
 
@@ -526,7 +558,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if _, err := os.Stat(imagePath); os.IsNotExist(err) {
 				errorMsg := fmt.Sprintf("ERROR: Image file not found: %s", imagePath)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
 				continue
 			}
 
@@ -598,7 +630,6 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 
 			// Calculate available space on current page
 			remainingHeight := pageHeight - footerHeight - margin - currentY
-			spacing := 5.0
 
 			// Check if we have enough space for the image
 			if remainingHeight < imageHeight+spacing {
