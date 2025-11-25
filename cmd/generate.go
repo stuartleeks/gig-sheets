@@ -54,6 +54,7 @@ var (
 	spacingFlag    *float64 // Pointer to distinguish between unset and 0
 	imageOverride  string   // Override image name to use if it exists
 	outputOverride string   // Override output folder path
+	allSongs       bool     // Generate _all.pdf with all songs from config
 )
 
 var generateCmd = &cobra.Command{
@@ -69,6 +70,7 @@ func init() {
 	generateCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and regenerate automatically")
 	generateCmd.Flags().StringVarP(&imageOverride, "image-override", "i", "", "Image name to use for all songs if it exists, otherwise use the one specified in gig YAML")
 	generateCmd.Flags().StringVarP(&outputOverride, "output", "o", "", "Override output folder path from config file")
+	generateCmd.Flags().BoolVarP(&allSongs, "all-songs", "a", false, "Generate _all.pdf containing all songs from config (uses default image unless image-override is set)")
 
 	// Use a local variable for the flag, then assign to spacingFlag in runGenerate
 	generateCmd.Flags().Float64P("spacing", "s", -1, "Spacing between images in mm (default: 5.0, or value from config)")
@@ -278,6 +280,34 @@ func generateAllGigs() error {
 		}
 
 		fmt.Printf("Successfully generated PDF: %s\n", outputFile)
+	}
+
+	// Generate _all.pdf if --all-songs flag is set
+	if allSongs {
+		allSongsFile := filepath.Join(outputDir, "_all.pdf")
+
+		// Create an in-memory gig with all songs from config
+		allSongsGig := &Gig{
+			Name: "All Songs",
+			Sets: []Set{
+				{
+					Name:  "All Songs",
+					Songs: make([]string, len(config.Songs)),
+				},
+			},
+		}
+
+		// Populate the songs list (use default image unless image-override is set)
+		for i, song := range config.Songs {
+			allSongsGig.Sets[0].Songs[i] = song.Nickname
+		}
+
+		err = generatePDF(config, allSongsGig, allSongsFile, imagesDir, "config", spacing, imageOverride)
+		if err != nil {
+			log.Printf("Error generating _all.pdf: %v", err)
+		} else {
+			fmt.Printf("Successfully generated PDF: %s\n", allSongsFile)
+		}
 	}
 
 	return nil

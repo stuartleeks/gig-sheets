@@ -78,6 +78,7 @@ This is particularly useful during development - the tool will monitor your conf
 - `--output, -o`: Override output folder path from config file (can be absolute or relative to config file)
 - `--spacing, -s`: Spacing between images in mm (default: 5.0, or value from config)
 - `--image-override, -i`: Image name to use for all songs if it exists, otherwise use the one specified in gig YAML
+- `--all-songs, -a`: Generate `_all.pdf` containing all songs from config (uses default image unless image-override is set)
 - `--watch, -w`: Watch for changes and regenerate automatically
 
 When using watch mode, the tool will monitor both the config file and all gig files in the gigs folder. Any changes to these files will automatically trigger PDF regeneration.
@@ -189,6 +190,26 @@ When an image override is specified:
 - If a song has the specified variant (e.g., "v2"), that variant will be used
 - If a song doesn't have the specified variant, it falls back to the variant specified in the gig YAML
 - This is useful for generating different versions of the same gig (e.g., simplified versions, transposed versions, etc.)
+
+#### All Songs PDF
+
+Generate a PDF containing all songs from your config file using the `--all-songs` flag:
+
+```bash
+# Generate _all.pdf with all songs (using default images)
+./gigsheets generate --config config.yaml --all-songs
+
+# Generate _all.pdf with a specific variant where available
+./gigsheets generate --config config.yaml --all-songs --image-override v2
+```
+
+When `--all-songs` is specified:
+- In addition to generating PDFs for each gig file, an `_all.pdf` file is created
+- The `_all.pdf` contains all songs defined in the config file
+- By default, it uses the "default" image for each song
+- If `--image-override` is specified, it uses that variant where available
+- Songs are presented in the order they appear in the config file
+- This is useful for creating a complete reference sheet of all available songs
 
 ## Example
 
