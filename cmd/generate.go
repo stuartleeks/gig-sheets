@@ -55,6 +55,7 @@ var (
 	imageOverride  string   // Override image name to use if it exists
 	outputOverride string   // Override output folder path
 	allSongs       bool     // Generate _all.pdf with all songs from config
+	debugMode      bool     // Enable debug logging
 )
 
 var generateCmd = &cobra.Command{
@@ -71,6 +72,7 @@ func init() {
 	generateCmd.Flags().StringVarP(&imageOverride, "image-override", "i", "", "Image name to use for all songs if it exists, otherwise use the one specified in gig YAML")
 	generateCmd.Flags().StringVarP(&outputOverride, "output", "o", "", "Override output folder path from config file")
 	generateCmd.Flags().BoolVarP(&allSongs, "all-songs", "a", false, "Generate _all.pdf containing all songs from config (uses default image unless image-override is set)")
+	generateCmd.Flags().BoolVarP(&debugMode, "debug", "d", false, "Enable debug logging")
 
 	// Use a local variable for the flag, then assign to spacingFlag in runGenerate
 	generateCmd.Flags().Float64P("spacing", "s", -1, "Spacing between images in mm (default: 5.0, or value from config)")
@@ -440,7 +442,7 @@ func findRightMostContent(img image.Image) int {
 }
 
 // cropImage crops the image from all edges (top, left, bottom, right) up to the content boundaries
-func cropImage(imagePath string) (image.Image, error) {
+func cropImage(imagePath string, songName string) (image.Image, error) {
 	// Open the image file
 	file, err := os.Open(imagePath)
 	if err != nil {
@@ -479,6 +481,9 @@ func cropImage(imagePath string) (image.Image, error) {
 
 	// If no cropping needed, return original image
 	if leftMostX <= bounds.Min.X && topMostY <= bounds.Min.Y && bottomMostY >= bounds.Max.Y && rightMostX >= bounds.Max.X {
+		if debugMode {
+			log.Printf("[DEBUG] No cropping needed for image '%s': %dx%d", songName, bounds.Dx(), bounds.Dy())
+		}
 		return img, nil
 	}
 
@@ -489,7 +494,22 @@ func cropImage(imagePath string) (image.Image, error) {
 	// Validate dimensions
 	if croppedWidth <= 0 || croppedHeight <= 0 {
 		// If dimensions are invalid, return original image
+		if debugMode {
+			log.Printf("[DEBUG] Invalid crop dimensions for image '%s', using original", songName)
+		}
 		return img, nil
+	}
+
+	if debugMode {
+		originalWidth := bounds.Dx()
+		originalHeight := bounds.Dy()
+		croppedLeft := leftMostX - bounds.Min.X
+		croppedTop := topMostY - bounds.Min.Y
+		croppedRight := bounds.Max.X - rightMostX
+		croppedBottom := bounds.Max.Y - bottomMostY
+		log.Printf("[DEBUG] Cropping image '%s': original=%dx%d, cropped=%dx%d, removed: left=%d, top=%d, right=%d, bottom=%d",
+			songName, originalWidth, originalHeight, croppedWidth, croppedHeight,
+			croppedLeft, croppedTop, croppedRight, croppedBottom)
 	}
 
 	// Create cropped image with new dimensions
@@ -641,7 +661,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			}
 
 			// Crop the image to remove white/transparent space from top, left, and bottom
-			croppedImg, err := cropImage(imagePath)
+			croppedImg, err := cropImage(imagePath, songName)
 			if err != nil {
 				log.Printf("%s: Warning: Could not crop image %s: %v", gigFile, imagePath, err)
 				croppedImg = nil // Will use original file path below
@@ -699,14 +719,24 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			imageWidth := naturalWidth * 0.352778
 			imageHeight := naturalHeight * 0.352778
 
+			// Calculate pixel dimensions (1 point = 1.333... pixels at 96 DPI)
+			imageWidthPx := int(naturalWidth * 1.333333)
+			imageHeightPx := int(naturalHeight * 1.333333)
+
 			// Only scale down if image is wider than available width
 			if imageWidth > availableWidth {
 				scale := availableWidth / imageWidth
+				if debugMode {
+					log.Printf("[DEBUG] Scaling image '%s': original=%dx%d (%.2fmm x %.2fmm), scale=%.4f, final=%dx%d (%.2fmm x %.2fmm)",
+						songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, scale,
+						int(float64(imageWidthPx)*scale), int(float64(imageHeightPx)*scale), availableWidth, imageHeight*scale)
+				}
 				imageWidth = availableWidth
 				imageHeight *= scale
-			}
-
-			// Calculate available space on current page
+			} else if debugMode {
+				log.Printf("[DEBUG] No scaling needed for image '%s': %dx%d (%.2fmm x %.2fmm), available width: %.2fmm",
+					songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, availableWidth)
+			} // Calculate available space on current page
 			remainingHeight := pageHeight - footerHeight - margin - currentY
 
 			// Check if we have enough space for the image
