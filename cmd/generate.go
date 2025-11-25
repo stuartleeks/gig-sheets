@@ -524,7 +524,7 @@ func cropImage(imagePath string, songName string) (image.Image, error) {
 }
 
 // addErrorText adds red error text to the PDF at the current position
-func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, margin, footerHeight, spacing float64, errorMsg string, addFooter func()) {
+func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, margin, footerHeight, spacing float64, errorMsg string, addFooter func(string), setName string) {
 	errorHeight := 10.0 // Height for error message
 
 	// Calculate available space on current page
@@ -533,7 +533,7 @@ func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, ma
 	// Check if we need a new page
 	if remainingHeight < errorHeight+spacing {
 		pdf.AddPage()
-		addFooter()
+		addFooter(setName)
 		*currentY = margin
 	}
 
@@ -587,26 +587,22 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 
 	// Track current page position
 	currentY := margin
-	pageNum := 0
+	pageNum := -1
 
 	// Add footer function
-	addFooter := func() {
+	addFooter := func(setName string) {
 		pageNum++
 		pdf.SetY(pageHeight - footerHeight)
 		pdf.SetFont("Arial", "", 8)
-		pdf.Cell(0, 5, fmt.Sprintf("%s - Page %d", gig.Name, pageNum))
+		pdf.Cell(0, 5, fmt.Sprintf("%s - Page %d - %s", gig.Name, pageNum, setName))
 	}
-
-	// Start first page
-	pdf.AddPage()
-	addFooter()
 
 	// Process each set
 	for setIndex, set := range gig.Sets {
 		// Add set separator (start new page if not the first set and not at top of page)
-		if setIndex > 0 && currentY > margin {
+		if (setIndex > 0 && currentY > margin) || (setIndex < 0) {
 			pdf.AddPage()
-			addFooter()
+			addFooter(set.Name)
 			currentY = margin
 		}
 
@@ -625,7 +621,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if !exists {
 				errorMsg := fmt.Sprintf("ERROR: No configuration found for song '%s'", actualSongName)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
 				continue
 			}
 
@@ -643,7 +639,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if !exists {
 				errorMsg := fmt.Sprintf("ERROR: No image '%s' found for song '%s'", imageName, actualSongName)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
 				continue
 			}
 
@@ -656,7 +652,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			if _, err := os.Stat(imagePath); os.IsNotExist(err) {
 				errorMsg := fmt.Sprintf("ERROR: Image file not found: %s", imagePath)
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
+				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
 				continue
 			}
 
@@ -742,7 +738,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			// Check if we have enough space for the image
 			if remainingHeight < imageHeight+spacing {
 				pdf.AddPage()
-				addFooter()
+				addFooter(set.Name)
 				currentY = margin
 			}
 
