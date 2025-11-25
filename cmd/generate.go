@@ -599,8 +599,8 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 
 	// Process each set
 	for setIndex, set := range gig.Sets {
-		// Add set separator (start new page if not the first set and not at top of page)
-		if (setIndex > 0 && currentY > margin) || (setIndex < 0) {
+		// Add set separator (start new page if not the first set and not at top of page, or if we don't yet have a page)
+		if (setIndex > 0 && currentY > margin) || (pageNum < 0) {
 			pdf.AddPage()
 			addFooter(set.Name)
 			currentY = margin
