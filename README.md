@@ -199,13 +199,17 @@ Generate a PDF containing all songs from your config file using the `--all-songs
 # Generate _all.pdf with all songs (using default images)
 ./gigsheets generate --config config.yaml --all-songs
 
-# Generate _all.pdf with a specific variant where available
+# Generate _all_v2.pdf with a specific variant where available
 ./gigsheets generate --config config.yaml --all-songs --image-override v2
+
+# Generate _all_simplified.pdf with the simplified variant
+./gigsheets generate --config config.yaml --all-songs --image-override simplified
 ```
 
 When `--all-songs` is specified:
 - In addition to generating PDFs for each gig file, an `_all.pdf` file is created
-- The `_all.pdf` contains all songs defined in the config file
+- If `--image-override` is also specified, the filename becomes `_all_<variant>.pdf` (e.g., `_all_v2.pdf`)
+- The PDF contains all songs defined in the config file
 - By default, it uses the "default" image for each song
 - If `--image-override` is specified, it uses that variant where available
 - Songs are presented in the order they appear in the config file

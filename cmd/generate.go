@@ -284,7 +284,12 @@ func generateAllGigs() error {
 
 	// Generate _all.pdf if --all-songs flag is set
 	if allSongs {
-		allSongsFile := filepath.Join(outputDir, "_all.pdf")
+		// Build filename based on image override
+		allSongsFilename := "_all.pdf"
+		if imageOverride != "" {
+			allSongsFilename = fmt.Sprintf("_all_%s.pdf", imageOverride)
+		}
+		allSongsFile := filepath.Join(outputDir, allSongsFilename)
 
 		// Create an in-memory gig with all songs from config
 		allSongsGig := &Gig{
