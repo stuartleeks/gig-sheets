@@ -75,6 +75,7 @@ This is particularly useful during development - the tool will monitor your conf
 #### generate
 
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
+- `--output, -o`: Override output folder path from config file (can be absolute or relative to config file)
 - `--spacing, -s`: Spacing between images in mm (default: 5.0, or value from config)
 - `--image-override, -i`: Image name to use for all songs if it exists, otherwise use the one specified in gig YAML
 - `--watch, -w`: Watch for changes and regenerate automatically

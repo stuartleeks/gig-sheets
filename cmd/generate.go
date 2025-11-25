@@ -49,10 +49,11 @@ type Set struct {
 }
 
 var (
-	configFile    string
-	watchMode     bool
-	spacingFlag   *float64 // Pointer to distinguish between unset and 0
-	imageOverride string   // Override image name to use if it exists
+	configFile     string
+	watchMode      bool
+	spacingFlag    *float64 // Pointer to distinguish between unset and 0
+	imageOverride  string   // Override image name to use if it exists
+	outputOverride string   // Override output folder path
 )
 
 var generateCmd = &cobra.Command{
@@ -67,6 +68,7 @@ func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
 	generateCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and regenerate automatically")
 	generateCmd.Flags().StringVarP(&imageOverride, "image-override", "i", "", "Image name to use for all songs if it exists, otherwise use the one specified in gig YAML")
+	generateCmd.Flags().StringVarP(&outputOverride, "output", "o", "", "Override output folder path from config file")
 
 	// Use a local variable for the flag, then assign to spacingFlag in runGenerate
 	generateCmd.Flags().Float64P("spacing", "s", -1, "Spacing between images in mm (default: 5.0, or value from config)")
@@ -215,7 +217,19 @@ func generateAllGigs() error {
 
 	// Resolve paths relative to config file
 	gigsDir := filepath.Join(configDir, config.GigsFolder)
-	outputDir := filepath.Join(configDir, config.OutputFolder)
+
+	// Use outputOverride if set, otherwise use config value
+	var outputDir string
+	if outputOverride != "" {
+		if filepath.IsAbs(outputOverride) {
+			outputDir = outputOverride
+		} else {
+			outputDir = filepath.Join(configDir, outputOverride)
+		}
+	} else {
+		outputDir = filepath.Join(configDir, config.OutputFolder)
+	}
+
 	imagesDir := filepath.Join(configDir, config.ImageFolder)
 
 	// Create output directory if it doesn't exist
