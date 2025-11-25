@@ -49,9 +49,10 @@ type Set struct {
 }
 
 var (
-	configFile  string
-	watchMode   bool
-	spacingFlag *float64 // Pointer to distinguish between unset and 0
+	configFile    string
+	watchMode     bool
+	spacingFlag   *float64 // Pointer to distinguish between unset and 0
+	imageOverride string   // Override image name to use if it exists
 )
 
 var generateCmd = &cobra.Command{
@@ -65,6 +66,7 @@ in the gig file, using image paths from the configuration file.`,
 func init() {
 	generateCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Path to config YAML file")
 	generateCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and regenerate automatically")
+	generateCmd.Flags().StringVarP(&imageOverride, "image-override", "i", "", "Image name to use for all songs if it exists, otherwise use the one specified in gig YAML")
 
 	// Use a local variable for the flag, then assign to spacingFlag in runGenerate
 	generateCmd.Flags().Float64P("spacing", "s", -1, "Spacing between images in mm (default: 5.0, or value from config)")
@@ -255,7 +257,7 @@ func generateAllGigs() error {
 		outputFile := filepath.Join(outputDir, gigName+".pdf")
 
 		// Generate PDF
-		err = generatePDF(config, gig, outputFile, imagesDir, gigFile, spacing)
+		err = generatePDF(config, gig, outputFile, imagesDir, gigFile, spacing, imageOverride)
 		if err != nil {
 			log.Printf("Error generating PDF for %s: %v", gigFile, err)
 			continue
@@ -463,7 +465,7 @@ func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, ma
 	*currentY += errorHeight + spacing
 }
 
-func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string, spacing float64) error {
+func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string, spacing float64, imageOverride string) error {
 	// Create a map for quick song lookup that supports both single and multiple images
 	songMap := make(map[string]map[string]string)
 	for _, song := range config.Songs {
@@ -538,6 +540,15 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 				log.Printf("%s: Warning: %s", gigFile, errorMsg)
 				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter)
 				continue
+			}
+
+			// Apply image override if specified
+			if imageOverride != "" {
+				// Check if the override image exists for this song
+				if _, exists := imageMap[imageOverride]; exists {
+					imageName = imageOverride
+				}
+				// Otherwise, keep the imageName from the gig YAML
 			}
 
 			// Look up the specific image

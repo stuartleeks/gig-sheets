@@ -76,6 +76,7 @@ This is particularly useful during development - the tool will monitor your conf
 
 - `--config, -c`: Path to config YAML file (default: "config.yaml")
 - `--spacing, -s`: Spacing between images in mm (default: 5.0, or value from config)
+- `--image-override, -i`: Image name to use for all songs if it exists, otherwise use the one specified in gig YAML
 - `--watch, -w`: Watch for changes and regenerate automatically
 
 When using watch mode, the tool will monitor both the config file and all gig files in the gigs folder. Any changes to these files will automatically trigger PDF regeneration.
@@ -166,6 +167,27 @@ sets:
       - song3
       - song4
 ```
+
+#### Using Image Variants
+
+Songs can reference specific image variants using the `#` syntax:
+- `song2` - Uses the default image for song2
+- `song2#v2` - Uses the "v2" variant of song2
+- `song2#simplified` - Uses the "simplified" variant of song2
+
+#### Image Override
+
+You can override the image variant for all songs in a gig using the `--image-override` flag:
+
+```bash
+# Use the "v2" variant for all songs that have it
+./gigsheets generate --config config.yaml --image-override v2
+```
+
+When an image override is specified:
+- If a song has the specified variant (e.g., "v2"), that variant will be used
+- If a song doesn't have the specified variant, it falls back to the variant specified in the gig YAML
+- This is useful for generating different versions of the same gig (e.g., simplified versions, transposed versions, etc.)
 
 ## Example
 
