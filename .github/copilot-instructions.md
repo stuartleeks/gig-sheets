@@ -57,6 +57,9 @@ make lint                               # Ensure no linter errors
 2. Define command with `cobra.Command` struct, flags via `init()`
 3. Register in `cmd/root.go`: `rootCmd.AddCommand(newCmd)`
 4. Use shared types from `generate.go` (`Config`, `Song`, `Gig`, `Set`)
+5. **Update `README.md`**: Add usage documentation for the new command in the Usage section
+
+**Modifying Existing Commands:** When changing command flags, arguments, or behavior, always update the corresponding usage examples and documentation in `README.md`.
 
 **Error Handling Convention:** Use `log.Fatalf()` for user-facing errors, `fmt.Errorf()` with `%w` verb for wrapped errors.
 
