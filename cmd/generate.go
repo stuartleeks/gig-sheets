@@ -421,8 +421,25 @@ func findBottomMostContent(img image.Image) int {
 	return bounds.Max.Y
 }
 
-// cropImage crops the image from the top, left, and bottom edges up to the content boundaries
-// Note: We don't crop the right edge to preserve any content that might extend to the edge
+// findRightMostContent finds the rightmost non-white, non-transparent column
+func findRightMostContent(img image.Image) int {
+	bounds := img.Bounds()
+
+	// Scan from right to left
+	for x := bounds.Max.X - 1; x >= bounds.Min.X; x-- {
+		// Check column from top to bottom
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			if !isWhiteOrTransparent(img.At(x, y)) {
+				return x + 1 // Return the position after the last content column
+			}
+		}
+	}
+
+	// If no content found, return original right boundary
+	return bounds.Max.X
+}
+
+// cropImage crops the image from all edges (top, left, bottom, right) up to the content boundaries
 func cropImage(imagePath string) (image.Image, error) {
 	// Open the image file
 	file, err := os.Open(imagePath)
@@ -458,14 +475,15 @@ func cropImage(imagePath string) (image.Image, error) {
 	leftMostX := findLeftMostContent(img)
 	topMostY := findTopMostContent(img)
 	bottomMostY := findBottomMostContent(img)
+	rightMostX := findRightMostContent(img)
 
 	// If no cropping needed, return original image
-	if leftMostX <= bounds.Min.X && topMostY <= bounds.Min.Y && bottomMostY >= bounds.Max.Y {
+	if leftMostX <= bounds.Min.X && topMostY <= bounds.Min.Y && bottomMostY >= bounds.Max.Y && rightMostX >= bounds.Max.X {
 		return img, nil
 	}
 
 	// Calculate the cropped dimensions
-	croppedWidth := bounds.Max.X - leftMostX
+	croppedWidth := rightMostX - leftMostX
 	croppedHeight := bottomMostY - topMostY
 
 	// Validate dimensions
@@ -479,7 +497,7 @@ func cropImage(imagePath string) (image.Image, error) {
 	croppedImg := image.NewRGBA(croppedBounds)
 
 	// Copy the cropped portion
-	srcRect := image.Rect(leftMostX, topMostY, bounds.Max.X, bottomMostY)
+	srcRect := image.Rect(leftMostX, topMostY, rightMostX, bottomMostY)
 	draw.Copy(croppedImg, croppedImg.Bounds().Min, img, srcRect, draw.Src, nil)
 
 	return croppedImg, nil
