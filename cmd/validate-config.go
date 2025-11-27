@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ import (
 var (
 	validateConfigFile string
 	addMissing         bool
+	sortSongs          bool
 )
 
 var validateConfigCmd = &cobra.Command{
@@ -27,6 +29,7 @@ Optionally add missing images from the image folder to the config file using --a
 func init() {
 	validateConfigCmd.Flags().StringVarP(&validateConfigFile, "config", "c", "config.yaml", "Path to config YAML file")
 	validateConfigCmd.Flags().BoolVarP(&addMissing, "add-missing", "a", false, "Add missing images from image folder to config file")
+	validateConfigCmd.Flags().BoolVarP(&sortSongs, "sort", "s", false, "Sort songs alphabetically by nickname")
 }
 
 func runValidateConfig(cmd *cobra.Command, args []string) {
@@ -153,6 +156,23 @@ func runValidateConfig(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Printf("\nNo new images found to add.\n")
 		}
+	}
+
+	// Handle --sort flag
+	if sortSongs {
+		fmt.Printf("\nSorting songs alphabetically by nickname...\n")
+		
+		sort.Slice(config.Songs, func(i, j int) bool {
+			return strings.ToLower(config.Songs[i].Nickname) < strings.ToLower(config.Songs[j].Nickname)
+		})
+
+		// Write updated config back to file
+		err := writeConfig(config, validateConfigFile)
+		if err != nil {
+			log.Fatalf("Error writing updated config file: %v", err)
+		}
+
+		fmt.Printf("Successfully sorted and updated config file: %s\n", validateConfigFile)
 	}
 
 	// Exit with error code if there are missing images
