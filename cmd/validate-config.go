@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -51,6 +52,7 @@ func runValidateConfig(cmd *cobra.Command, args []string) {
 	// Track validation results
 	var missingImages []string
 	var validImages []string
+	configChanged := false
 
 	// Validate existing images in config
 	for _, song := range config.Songs {
@@ -116,9 +118,15 @@ func runValidateConfig(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		// Find images that aren't in config
-		var newSongs []Song
 		supportedExts := map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
+
+		// Group images by base name
+		// First pass: collect all image names without extensions
+		type imageInfo struct {
+			fileName       string
+			nameWithoutExt string
+		}
+		var allImages []imageInfo
 
 		for _, imagePath := range imageFiles {
 			if info, err := os.Stat(imagePath); err == nil && !info.IsDir() {
@@ -127,32 +135,95 @@ func runValidateConfig(cmd *cobra.Command, args []string) {
 
 				// Check if it's a supported image format and not already in config
 				if supportedExts[ext] && !existingImages[imageName] {
-					// Use filename without extension as song nickname
-					nickname := strings.TrimSuffix(imageName, filepath.Ext(imageName))
-
-					newSong := Song{
-						Nickname: nickname,
-						Image:    imageName,
-					}
-					newSongs = append(newSongs, newSong)
+					nameWithoutExt := strings.TrimSuffix(imageName, filepath.Ext(imageName))
+					allImages = append(allImages, imageInfo{
+						fileName:       imageName,
+						nameWithoutExt: nameWithoutExt,
+					})
 				}
+			}
+		}
+
+		// Sort images alphabetically to process base names before variants
+		sort.Slice(allImages, func(i, j int) bool {
+			return allImages[i].nameWithoutExt < allImages[j].nameWithoutExt
+		})
+
+		// Second pass: group images that share a common base
+		// Key: base name, Value: map of variant -> filename
+		imageGroups := make(map[string]map[string]string)
+		used := make(map[int]bool) // Track which images have been grouped
+
+		for i, img1 := range allImages {
+			if used[i] {
+				continue
+			}
+
+			// Start a new group with this image
+			baseName := img1.nameWithoutExt
+			variants := make(map[string]string)
+			variants["default"] = img1.fileName
+			used[i] = true
+
+			// Look for other images that match this base with a suffix
+			for j, img2 := range allImages {
+				if i == j || used[j] {
+					continue
+				}
+
+				// Check if img2 starts with img1's name followed by a hyphen
+				if strings.HasPrefix(img2.nameWithoutExt, img1.nameWithoutExt+"-") {
+					suffix := img2.nameWithoutExt[len(img1.nameWithoutExt)+1:]
+					if suffix != "" {
+						variants[suffix] = img2.fileName
+						used[j] = true
+					}
+				}
+			}
+
+			imageGroups[baseName] = variants
+		}
+
+		// Create new songs from grouped images
+		var newSongs []Song
+		for baseName, variants := range imageGroups {
+			if len(variants) == 1 {
+				// Single image - check if it's the default variant
+				for variant, imageName := range variants {
+					if variant == "default" {
+						// Use simple image format
+						newSongs = append(newSongs, Song{
+							Nickname: baseName,
+							Image:    imageName,
+						})
+					} else {
+						// Use images map format with the variant
+						newSongs = append(newSongs, Song{
+							Nickname: baseName,
+							Images:   variants,
+						})
+					}
+				}
+			} else {
+				// Multiple images - use images map format
+				newSongs = append(newSongs, Song{
+					Nickname: baseName,
+					Images:   variants,
+				})
 			}
 		}
 
 		if len(newSongs) > 0 {
 			fmt.Printf("\nAdding %d new songs to config:\n", len(newSongs))
 			for _, song := range newSongs {
-				fmt.Printf("  + %s -> %s\n", song.Nickname, song.Image)
+				if song.Image != "" {
+					fmt.Printf("  + %s -> %s\n", song.Nickname, song.Image)
+				} else {
+					fmt.Printf("  + %s -> %v\n", song.Nickname, song.Images)
+				}
 				config.Songs = append(config.Songs, song)
 			}
-
-			// Write updated config back to file
-			err := writeConfig(config, validateConfigFile)
-			if err != nil {
-				log.Fatalf("Error writing updated config file: %v", err)
-			}
-
-			fmt.Printf("\nSuccessfully updated config file: %s\n", validateConfigFile)
+			configChanged = true
 		} else {
 			fmt.Printf("\nNo new images found to add.\n")
 		}
@@ -160,19 +231,32 @@ func runValidateConfig(cmd *cobra.Command, args []string) {
 
 	// Handle --sort flag
 	if sortSongs {
-		fmt.Printf("\nSorting songs alphabetically by nickname...\n")
-		
-		sort.Slice(config.Songs, func(i, j int) bool {
-			return strings.ToLower(config.Songs[i].Nickname) < strings.ToLower(config.Songs[j].Nickname)
+		// Check if songs are already sorted
+		alreadySorted := slices.IsSortedFunc(config.Songs, func(a, b Song) int {
+			return strings.Compare(strings.ToLower(a.Nickname), strings.ToLower(b.Nickname))
 		})
 
-		// Write updated config back to file
+		if !alreadySorted {
+			fmt.Printf("\nSorting songs alphabetically by nickname...\n")
+
+			slices.SortFunc(config.Songs, func(a, b Song) int {
+				return strings.Compare(strings.ToLower(a.Nickname), strings.ToLower(b.Nickname))
+			})
+
+			configChanged = true
+		} else {
+			fmt.Printf("\nSongs are already sorted alphabetically.\n")
+		}
+	}
+
+	// Write config back to file if there were any changes
+	if configChanged {
 		err := writeConfig(config, validateConfigFile)
 		if err != nil {
 			log.Fatalf("Error writing updated config file: %v", err)
 		}
 
-		fmt.Printf("Successfully sorted and updated config file: %s\n", validateConfigFile)
+		fmt.Printf("\nSuccessfully updated config file: %s\n", validateConfigFile)
 	}
 
 	// Exit with error code if there are missing images
