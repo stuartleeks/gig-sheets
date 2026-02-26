@@ -164,11 +164,21 @@ sets:
     songs:
       - song1
       - song2#v2  # Use specific image variant
+      - group:
+          - song3
+          - song4#v2
   - name: set2
     songs:
-      - song3
-      - song4
+      - song5
+      - song6
 ```
+
+`songs` entries can be either:
+- A string song reference (e.g., `song1` or `song2#v2`)
+- An object with `song: <reference>`
+- An object with `group: [<reference>, ...]`
+
+Groups are rendered with horizontal separator lines at group boundaries to provide clear visual separation while staying space-efficient.
 
 #### Using Image Variants
 

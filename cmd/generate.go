@@ -42,10 +42,66 @@ type Gig struct {
 	Sets []Set  `yaml:"sets"`
 }
 
+// SetSongItem represents a single item in a set's songs list.
+// It can be either a single song or a group of songs.
+type SetSongItem struct {
+	Song  string   `yaml:"song,omitempty"`
+	Group []string `yaml:"group,omitempty"`
+}
+
+// UnmarshalYAML supports the following forms for set song items:
+// - "song-name"
+// - song: "song-name"
+// - group: ["song-a", "song-b#variant"]
+func (s *SetSongItem) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var songName string
+		if err := value.Decode(&songName); err != nil {
+			return fmt.Errorf("failed to decode song item: %w", err)
+		}
+		if strings.TrimSpace(songName) == "" {
+			return fmt.Errorf("song item cannot be empty")
+		}
+		s.Song = songName
+		s.Group = nil
+		return nil
+
+	case yaml.MappingNode:
+		var raw struct {
+			Song  string   `yaml:"song"`
+			Group []string `yaml:"group"`
+		}
+		if err := value.Decode(&raw); err != nil {
+			return fmt.Errorf("failed to decode song mapping item: %w", err)
+		}
+
+		hasSong := strings.TrimSpace(raw.Song) != ""
+		hasGroup := len(raw.Group) > 0
+
+		switch {
+		case hasSong && hasGroup:
+			return fmt.Errorf("song item cannot define both 'song' and 'group'")
+		case !hasSong && !hasGroup:
+			return fmt.Errorf("song mapping item must define either 'song' or 'group'")
+		case hasSong:
+			s.Song = raw.Song
+			s.Group = nil
+		default:
+			s.Song = ""
+			s.Group = raw.Group
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("song item must be a string or object with 'song' or 'group'")
+	}
+}
+
 // Set represents a set of songs
 type Set struct {
-	Name  string   `yaml:"name"`
-	Songs []string `yaml:"songs"`
+	Name  string        `yaml:"name"`
+	Songs []SetSongItem `yaml:"songs"`
 }
 
 var (
@@ -299,14 +355,14 @@ func generateAllGigs() error {
 			Sets: []Set{
 				{
 					Name:  "All Songs",
-					Songs: make([]string, len(config.Songs)),
+					Songs: make([]SetSongItem, len(config.Songs)),
 				},
 			},
 		}
 
 		// Populate the songs list (use default image unless image-override is set)
 		for i, song := range config.Songs {
-			allSongsGig.Sets[0].Songs[i] = song.Nickname
+			allSongsGig.Sets[0].Songs[i] = SetSongItem{Song: song.Nickname}
 		}
 
 		err = generatePDF(config, allSongsGig, allSongsFile, imagesDir, "config", spacing, imageOverride)
@@ -597,6 +653,163 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 		pdf.Cell(0, 5, fmt.Sprintf("%s - Page %d - %s", gig.Name, pageNum, setName))
 	}
 
+	addGroupSeparator := func(setName string) {
+		separatorPadding := 1.2
+		requiredHeight := separatorPadding * 2
+		remainingHeight := pageHeight - footerHeight - margin - currentY
+
+		if remainingHeight < requiredHeight {
+			pdf.AddPage()
+			addFooter(setName)
+			currentY = margin
+		}
+
+		lineY := currentY + separatorPadding
+		pdf.Line(margin, lineY, pageWidth-margin, lineY)
+		currentY += requiredHeight
+	}
+
+	renderSong := func(songName string, setName string) bool {
+		// Parse song name and image name
+		parts := strings.SplitN(songName, "#", 2)
+		actualSongName := parts[0]
+		imageName := "default"
+		if len(parts) > 1 {
+			imageName = parts[1]
+		}
+
+		// Look up the song in the map
+		imageMap, exists := songMap[actualSongName]
+		if !exists {
+			errorMsg := fmt.Sprintf("ERROR: No configuration found for song '%s'", actualSongName)
+			log.Printf("%s: Warning: %s", gigFile, errorMsg)
+			addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, setName)
+			return true
+		}
+
+		// Apply image override if specified
+		if imageOverride != "" {
+			// Check if the override image exists for this song
+			if _, exists := imageMap[imageOverride]; exists {
+				imageName = imageOverride
+			}
+			// Otherwise, keep the imageName from the gig YAML
+		}
+
+		// Look up the specific image
+		imagePath, exists := imageMap[imageName]
+		if !exists {
+			errorMsg := fmt.Sprintf("ERROR: No image '%s' found for song '%s'", imageName, actualSongName)
+			log.Printf("%s: Warning: %s", gigFile, errorMsg)
+			addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, setName)
+			return true
+		}
+
+		// Make image path relative to images directory if it's not absolute
+		if !filepath.IsAbs(imagePath) {
+			imagePath = filepath.Join(imagesDir, imagePath)
+		}
+
+		// Check if image file exists
+		if _, err := os.Stat(imagePath); os.IsNotExist(err) {
+			errorMsg := fmt.Sprintf("ERROR: Image file not found: %s", imagePath)
+			log.Printf("%s: Warning: %s", gigFile, errorMsg)
+			addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, setName)
+			return true
+		}
+
+		// Crop the image to remove white/transparent space from top, left, and bottom
+		croppedImg, err := cropImage(imagePath, songName)
+		if err != nil {
+			log.Printf("%s: Warning: Could not crop image %s: %v", gigFile, imagePath, err)
+			croppedImg = nil // Will use original file path below
+		}
+
+		var imageInfo *gofpdf.ImageInfoType
+		var finalImagePath string
+
+		if croppedImg != nil {
+			// Convert cropped image to bytes buffer for gofpdf
+			var buf bytes.Buffer
+			ext := strings.ToLower(filepath.Ext(imagePath))
+			switch ext {
+			case ".png":
+				err = png.Encode(&buf, croppedImg)
+			case ".jpg", ".jpeg":
+				err = jpeg.Encode(&buf, croppedImg, &jpeg.Options{Quality: 90})
+			default:
+				err = png.Encode(&buf, croppedImg) // Default to PNG
+			}
+
+			if err != nil {
+				log.Printf("%s: Warning: Could not encode cropped image %s: %v", gigFile, imagePath, err)
+				// Fall back to original file
+				imageInfo = pdf.RegisterImage(imagePath, "")
+				finalImagePath = imagePath
+			} else {
+				// Register the cropped image from bytes buffer
+				croppedImageName := fmt.Sprintf("cropped_%s", songName)
+				imageType := ""
+				switch ext {
+				case ".png":
+					imageType = "PNG"
+				case ".jpg", ".jpeg":
+					imageType = "JPG"
+				default:
+					imageType = "PNG"
+				}
+				imageInfo = pdf.RegisterImageReader(croppedImageName, imageType, &buf)
+				finalImagePath = croppedImageName
+			}
+		} else {
+			// Use original file
+			imageInfo = pdf.RegisterImage(imagePath, "")
+			finalImagePath = imagePath
+		}
+		if imageInfo == nil {
+			log.Printf("%s: Warning: Could not process image: %s", gigFile, imagePath)
+			return false
+		}
+
+		// Get natural image dimensions in points, then convert to mm
+		naturalWidth, naturalHeight := imageInfo.Extent()
+		// Convert from points to mm (1 point = 0.352778 mm)
+		imageWidth := naturalWidth * 0.352778
+		imageHeight := naturalHeight * 0.352778
+
+		// Calculate pixel dimensions (1 point = 1.333... pixels at 96 DPI)
+		imageWidthPx := int(naturalWidth * 1.333333)
+		imageHeightPx := int(naturalHeight * 1.333333)
+
+		// Only scale down if image is wider than available width
+		if imageWidth > availableWidth {
+			scale := availableWidth / imageWidth
+			if debugMode {
+				log.Printf("[DEBUG] Image '%s' - scaling: original=%dx%d (%.2fmm x %.2fmm), scale=%.4f, final=%dx%d (%.2fmm x %.2fmm)",
+					songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, scale,
+					int(float64(imageWidthPx)*scale), int(float64(imageHeightPx)*scale), availableWidth, imageHeight*scale)
+			}
+			imageWidth = availableWidth
+			imageHeight *= scale
+		} else if debugMode {
+			log.Printf("[DEBUG] Image '%s' - no scaling needed: %dx%d (%.2fmm x %.2fmm), available width: %.2fmm",
+				songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, availableWidth)
+		} // Calculate available space on current page
+		remainingHeight := pageHeight - footerHeight - margin - currentY
+
+		// Check if we have enough space for the image
+		if remainingHeight < imageHeight+spacing {
+			pdf.AddPage()
+			addFooter(setName)
+			currentY = margin
+		}
+
+		// Add image without scaling (unless it was too wide)
+		pdf.ImageOptions(finalImagePath, margin, currentY, imageWidth, imageHeight, false, gofpdf.ImageOptions{}, 0, "")
+		currentY += imageHeight + spacing
+		return true
+	}
+
 	// Process each set
 	for setIndex, set := range gig.Sets {
 		// Add set separator (start new page if not the first set and not at top of page, or if we don't yet have a page)
@@ -606,145 +819,39 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 			currentY = margin
 		}
 
-		// Add songs for this set
-		for _, songName := range set.Songs {
-			// Parse song name and image name
-			parts := strings.Split(songName, "#")
-			actualSongName := parts[0]
-			imageName := "default"
-			if len(parts) > 1 {
-				imageName = parts[1]
+		renderedAnyInSet := false
+		lastRenderedWasGroup := false
+
+		for _, item := range set.Songs {
+			itemSongs := make([]string, 0, 1)
+			isGroup := false
+
+			if len(item.Group) > 0 {
+				itemSongs = append(itemSongs, item.Group...)
+				isGroup = true
+			} else if strings.TrimSpace(item.Song) != "" {
+				itemSongs = append(itemSongs, item.Song)
 			}
 
-			// Look up the song in the map
-			imageMap, exists := songMap[actualSongName]
-			if !exists {
-				errorMsg := fmt.Sprintf("ERROR: No configuration found for song '%s'", actualSongName)
-				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
+			if len(itemSongs) == 0 {
 				continue
 			}
 
-			// Apply image override if specified
-			if imageOverride != "" {
-				// Check if the override image exists for this song
-				if _, exists := imageMap[imageOverride]; exists {
-					imageName = imageOverride
+			if renderedAnyInSet && (isGroup || lastRenderedWasGroup) {
+				addGroupSeparator(set.Name)
+			}
+
+			itemRendered := false
+			for _, songName := range itemSongs {
+				if renderSong(songName, set.Name) {
+					itemRendered = true
 				}
-				// Otherwise, keep the imageName from the gig YAML
 			}
 
-			// Look up the specific image
-			imagePath, exists := imageMap[imageName]
-			if !exists {
-				errorMsg := fmt.Sprintf("ERROR: No image '%s' found for song '%s'", imageName, actualSongName)
-				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
-				continue
+			if itemRendered {
+				renderedAnyInSet = true
+				lastRenderedWasGroup = isGroup
 			}
-
-			// Make image path relative to images directory if it's not absolute
-			if !filepath.IsAbs(imagePath) {
-				imagePath = filepath.Join(imagesDir, imagePath)
-			}
-
-			// Check if image file exists
-			if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-				errorMsg := fmt.Sprintf("ERROR: Image file not found: %s", imagePath)
-				log.Printf("%s: Warning: %s", gigFile, errorMsg)
-				addErrorText(pdf, &currentY, pageWidth, pageHeight, margin, footerHeight, spacing, errorMsg, addFooter, set.Name)
-				continue
-			}
-
-			// Crop the image to remove white/transparent space from top, left, and bottom
-			croppedImg, err := cropImage(imagePath, songName)
-			if err != nil {
-				log.Printf("%s: Warning: Could not crop image %s: %v", gigFile, imagePath, err)
-				croppedImg = nil // Will use original file path below
-			}
-
-			var imageInfo *gofpdf.ImageInfoType
-			var finalImagePath string
-
-			if croppedImg != nil {
-				// Convert cropped image to bytes buffer for gofpdf
-				var buf bytes.Buffer
-				ext := strings.ToLower(filepath.Ext(imagePath))
-				switch ext {
-				case ".png":
-					err = png.Encode(&buf, croppedImg)
-				case ".jpg", ".jpeg":
-					err = jpeg.Encode(&buf, croppedImg, &jpeg.Options{Quality: 90})
-				default:
-					err = png.Encode(&buf, croppedImg) // Default to PNG
-				}
-
-				if err != nil {
-					log.Printf("%s: Warning: Could not encode cropped image %s: %v", gigFile, imagePath, err)
-					// Fall back to original file
-					imageInfo = pdf.RegisterImage(imagePath, "")
-					finalImagePath = imagePath
-				} else {
-					// Register the cropped image from bytes buffer
-					croppedImageName := fmt.Sprintf("cropped_%s", songName)
-					imageType := ""
-					switch ext {
-					case ".png":
-						imageType = "PNG"
-					case ".jpg", ".jpeg":
-						imageType = "JPG"
-					default:
-						imageType = "PNG"
-					}
-					imageInfo = pdf.RegisterImageReader(croppedImageName, imageType, &buf)
-					finalImagePath = croppedImageName
-				}
-			} else {
-				// Use original file
-				imageInfo = pdf.RegisterImage(imagePath, "")
-				finalImagePath = imagePath
-			}
-			if imageInfo == nil {
-				log.Printf("%s: Warning: Could not process image: %s", gigFile, imagePath)
-				continue
-			}
-
-			// Get natural image dimensions in points, then convert to mm
-			naturalWidth, naturalHeight := imageInfo.Extent()
-			// Convert from points to mm (1 point = 0.352778 mm)
-			imageWidth := naturalWidth * 0.352778
-			imageHeight := naturalHeight * 0.352778
-
-			// Calculate pixel dimensions (1 point = 1.333... pixels at 96 DPI)
-			imageWidthPx := int(naturalWidth * 1.333333)
-			imageHeightPx := int(naturalHeight * 1.333333)
-
-			// Only scale down if image is wider than available width
-			if imageWidth > availableWidth {
-				scale := availableWidth / imageWidth
-				if debugMode {
-					log.Printf("[DEBUG] Image '%s' - scaling: original=%dx%d (%.2fmm x %.2fmm), scale=%.4f, final=%dx%d (%.2fmm x %.2fmm)",
-						songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, scale,
-						int(float64(imageWidthPx)*scale), int(float64(imageHeightPx)*scale), availableWidth, imageHeight*scale)
-				}
-				imageWidth = availableWidth
-				imageHeight *= scale
-			} else if debugMode {
-				log.Printf("[DEBUG] Image '%s' - no scaling needed: %dx%d (%.2fmm x %.2fmm), available width: %.2fmm",
-					songName, imageWidthPx, imageHeightPx, imageWidth, imageHeight, availableWidth)
-			} // Calculate available space on current page
-			remainingHeight := pageHeight - footerHeight - margin - currentY
-
-			// Check if we have enough space for the image
-			if remainingHeight < imageHeight+spacing {
-				pdf.AddPage()
-				addFooter(set.Name)
-				currentY = margin
-			}
-
-			// Add image without scaling (unless it was too wide)
-			pdf.ImageOptions(finalImagePath, margin, currentY, imageWidth, imageHeight, false, gofpdf.ImageOptions{}, 0, "")
-			currentY += imageHeight + spacing
 		}
 	}
 

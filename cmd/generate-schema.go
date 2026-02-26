@@ -168,6 +168,48 @@ func generateJSONSchema(config *Config) (*JSONSchema, error) {
 	}
 
 	// Create the schema
+	songItemSchema := map[string]interface{}{
+		"description": "Song item as a string, a single-song object, or a grouped-song object",
+		"oneOf": []interface{}{
+			map[string]interface{}{
+				"type":        "string",
+				"description": "Song nickname, optionally with image variant (e.g., 'song1' or 'song1#v2')",
+				"enum":        songCompletions,
+				"examples":    songCompletions[:min(10, len(songCompletions))], // Limit examples to first 10
+			},
+			map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"song": map[string]interface{}{
+						"type":        "string",
+						"description": "Single song nickname, optionally with image variant",
+						"enum":        songCompletions,
+						"examples":    songCompletions[:min(10, len(songCompletions))],
+					},
+				},
+				"required":             []string{"song"},
+				"additionalProperties": false,
+			},
+			map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"group": map[string]interface{}{
+						"type":        "array",
+						"description": "Grouped songs rendered with separator lines around group boundaries",
+						"items": map[string]interface{}{
+							"type":     "string",
+							"enum":     songCompletions,
+							"examples": songCompletions[:min(10, len(songCompletions))],
+						},
+						"minItems": 1,
+					},
+				},
+				"required":             []string{"group"},
+				"additionalProperties": false,
+			},
+		},
+	}
+
 	schema := &JSONSchema{
 		Schema:      "http://json-schema.org/draft-07/schema#",
 		Title:       "Gig Configuration Schema",
@@ -190,13 +232,8 @@ func generateJSONSchema(config *Config) (*JSONSchema, error) {
 						},
 						"songs": map[string]interface{}{
 							"type":        "array",
-							"description": "List of songs in the set",
-							"items": map[string]interface{}{
-								"type":        "string",
-								"description": "Song nickname, optionally with image variant (e.g., 'song1' or 'song1#v2')",
-								"enum":        songCompletions,
-								"examples":    songCompletions[:min(10, len(songCompletions))], // Limit examples to first 10
-							},
+							"description": "List of set items containing songs and optional groups",
+							"items":       songItemSchema,
 						},
 					},
 					"required": []string{"name", "songs"},

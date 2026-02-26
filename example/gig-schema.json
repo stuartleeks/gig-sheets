@@ -17,24 +17,87 @@
             "type": "string"
           },
           "songs": {
-            "description": "List of songs in the set",
+            "description": "List of set items containing songs and optional groups",
             "items": {
-              "description": "Song nickname, optionally with image variant (e.g., 'song1' or 'song1#v2')",
-              "enum": [
-                "song1",
-                "song2",
-                "song2#v2",
-                "song3",
-                "song4"
-              ],
-              "examples": [
-                "song1",
-                "song2",
-                "song2#v2",
-                "song3",
-                "song4"
-              ],
-              "type": "string"
+              "description": "Song item as a string, a single-song object, or a grouped-song object",
+              "oneOf": [
+                {
+                  "description": "Song nickname, optionally with image variant (e.g., 'song1' or 'song1#v2')",
+                  "enum": [
+                    "song1",
+                    "song2",
+                    "song2#v2",
+                    "song3",
+                    "song4"
+                  ],
+                  "examples": [
+                    "song1",
+                    "song2",
+                    "song2#v2",
+                    "song3",
+                    "song4"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "song": {
+                      "description": "Single song nickname, optionally with image variant",
+                      "enum": [
+                        "song1",
+                        "song2",
+                        "song2#v2",
+                        "song3",
+                        "song4"
+                      ],
+                      "examples": [
+                        "song1",
+                        "song2",
+                        "song2#v2",
+                        "song3",
+                        "song4"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "song"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "group": {
+                      "description": "Grouped songs rendered with separator lines around group boundaries",
+                      "items": {
+                        "enum": [
+                          "song1",
+                          "song2",
+                          "song2#v2",
+                          "song3",
+                          "song4"
+                        ],
+                        "examples": [
+                          "song1",
+                          "song2",
+                          "song2#v2",
+                          "song3",
+                          "song4"
+                        ],
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "group"
+                  ],
+                  "type": "object"
+                }
+              ]
             },
             "type": "array"
           }

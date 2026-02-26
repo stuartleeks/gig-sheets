@@ -68,6 +68,27 @@ When editing a gig.yaml file, you'll get autocomplete suggestions for:
 - `wonderful-tonight#simplified` 
 - `layla`
 
+You can also structure set songs using single items or grouped items:
+
+```yaml
+name: Friday Set
+sets:
+  - name: Set 1
+    songs:
+      - wonderful-tonight
+      - song: layla
+      - group:
+          - wonderful-tonight#simplified
+          - layla
+```
+
+`songs` entries support:
+- A string song reference (for example `wonderful-tonight`)
+- A `song` object (for example `song: layla`)
+- A `group` object containing multiple songs
+
+When PDFs are generated, group boundaries are rendered with horizontal separator lines to keep sections visually distinct without adding large gaps.
+
 ## Updating the Schema
 
 Whenever you add or modify songs in your config.yaml, regenerate the schema to update the autocomplete suggestions:

@@ -3,10 +3,13 @@ sets:
   - name: set1
     songs:
       - song1           # Uses single image (backward compatibility)
-      - song2           # Uses default image from images map
-      - song2#v2        # Uses specific v2 image from images map
+      - song: song2     # Object form for a single song
+      - group:
+          - song2#v2    # Uses specific v2 image from images map
+          - song3       # Grouped for visual separation
   - name: set2
     songs:
-      - song3           # Uses default image from images map  
       - song3#default   # Explicitly uses default image
-      - song4           # Uses single image (backward compatibility)
+      - group:
+          - song4       # Uses single image (backward compatibility)
+          - song2       # Uses default image from images map
