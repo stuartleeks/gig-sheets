@@ -70,26 +70,41 @@
                   "additionalProperties": false,
                   "properties": {
                     "group": {
+                      "additionalProperties": false,
                       "description": "Grouped songs rendered with separator lines around group boundaries",
-                      "items": {
-                        "enum": [
-                          "song1",
-                          "song2",
-                          "song2#v2",
-                          "song3",
-                          "song4"
-                        ],
-                        "examples": [
-                          "song1",
-                          "song2",
-                          "song2#v2",
-                          "song3",
-                          "song4"
-                        ],
-                        "type": "string"
+                      "properties": {
+                        "marginColour": {
+                          "description": "Optional left-margin group marker color in #RRGGBB format",
+                          "pattern": "^#?[0-9A-Fa-f]{6}$",
+                          "type": "string"
+                        },
+                        "songs": {
+                          "description": "List of songs in this group",
+                          "items": {
+                            "enum": [
+                              "song1",
+                              "song2",
+                              "song2#v2",
+                              "song3",
+                              "song4"
+                            ],
+                            "examples": [
+                              "song1",
+                              "song2",
+                              "song2#v2",
+                              "song3",
+                              "song4"
+                            ],
+                            "type": "string"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        }
                       },
-                      "minItems": 1,
-                      "type": "array"
+                      "required": [
+                        "songs"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [

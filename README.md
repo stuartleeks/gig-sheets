@@ -165,8 +165,10 @@ sets:
       - song1
       - song2#v2  # Use specific image variant
       - group:
-          - song3
-          - song4#v2
+          songs:
+            - song3
+            - song4#v2
+          marginColour: "#4A90E2"  # Optional left-margin colour band for this group
   - name: set2
     songs:
       - song5
@@ -176,9 +178,9 @@ sets:
 `songs` entries can be either:
 - A string song reference (e.g., `song1` or `song2#v2`)
 - An object with `song: <reference>`
-- An object with `group: [<reference>, ...]`
+- An object with `group.songs: [<reference>, ...]` and optional `group.marginColour: "#RRGGBB"`
 
-Groups are rendered with horizontal separator lines at group boundaries to provide clear visual separation while staying space-efficient.
+Groups are rendered with horizontal separator lines at group boundaries to provide clear visual separation while staying space-efficient. If `marginColour` is provided, a small coloured band is drawn in the left margin alongside each song in that group.
 
 #### Using Image Variants
 

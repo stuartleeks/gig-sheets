@@ -194,14 +194,27 @@ func generateJSONSchema(config *Config) (*JSONSchema, error) {
 				"type": "object",
 				"properties": map[string]interface{}{
 					"group": map[string]interface{}{
-						"type":        "array",
+						"type":        "object",
 						"description": "Grouped songs rendered with separator lines around group boundaries",
-						"items": map[string]interface{}{
-							"type":     "string",
-							"enum":     songCompletions,
-							"examples": songCompletions[:min(10, len(songCompletions))],
+						"properties": map[string]interface{}{
+							"songs": map[string]interface{}{
+								"type":        "array",
+								"description": "List of songs in this group",
+								"items": map[string]interface{}{
+									"type":     "string",
+									"enum":     songCompletions,
+									"examples": songCompletions[:min(10, len(songCompletions))],
+								},
+								"minItems": 1,
+							},
+							"marginColour": map[string]interface{}{
+								"type":        "string",
+								"description": "Optional left-margin group marker color in #RRGGBB format",
+								"pattern":     "^#?[0-9A-Fa-f]{6}$",
+							},
 						},
-						"minItems": 1,
+						"required":             []string{"songs"},
+						"additionalProperties": false,
 					},
 				},
 				"required":             []string{"group"},

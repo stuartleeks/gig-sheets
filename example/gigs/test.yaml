@@ -5,11 +5,14 @@ sets:
       - song1           # Uses single image (backward compatibility)
       - song: song2     # Object form for a single song
       - group:
-          - song2#v2    # Uses specific v2 image from images map
-          - song3       # Grouped for visual separation
+          songs:
+            - song2#v2    # Uses specific v2 image from images map
+            - song3       # Grouped for visual separation
+          marginColour: "#2ECC71"
   - name: set2
     songs:
       - song3#default   # Explicitly uses default image
       - group:
-          - song4       # Uses single image (backward compatibility)
-          - song2       # Uses default image from images map
+          songs:
+            - song4       # Uses single image (backward compatibility)
+            - song2       # Uses default image from images map

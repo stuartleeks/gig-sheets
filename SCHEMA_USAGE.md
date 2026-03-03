@@ -78,16 +78,18 @@ sets:
       - wonderful-tonight
       - song: layla
       - group:
-          - wonderful-tonight#simplified
-          - layla
+          songs:
+            - wonderful-tonight#simplified
+            - layla
+          marginColour: "#E67E22"
 ```
 
 `songs` entries support:
 - A string song reference (for example `wonderful-tonight`)
 - A `song` object (for example `song: layla`)
-- A `group` object containing multiple songs
+- A `group` object containing `songs` and optional `marginColour` (hex `#RRGGBB`)
 
-When PDFs are generated, group boundaries are rendered with horizontal separator lines to keep sections visually distinct without adding large gaps.
+When PDFs are generated, group boundaries are rendered with horizontal separator lines to keep sections visually distinct without adding large gaps. If `marginColour` is set on a group, a small coloured band is added in the left margin next to songs in that group.
 
 ## Updating the Schema
 

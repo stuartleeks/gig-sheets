@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,15 +45,23 @@ type Gig struct {
 
 // SetSongItem represents a single item in a set's songs list.
 // It can be either a single song or a group of songs.
+type SongGroup struct {
+	Songs        []string `yaml:"songs"`
+	MarginColour string   `yaml:"marginColour,omitempty"`
+}
+
 type SetSongItem struct {
-	Song  string   `yaml:"song,omitempty"`
-	Group []string `yaml:"group,omitempty"`
+	Song  string     `yaml:"song,omitempty"`
+	Group *SongGroup `yaml:"group,omitempty"`
 }
 
 // UnmarshalYAML supports the following forms for set song items:
-// - "song-name"
-// - song: "song-name"
-// - group: ["song-a", "song-b#variant"]
+//   - "song-name"
+//   - song: "song-name"
+//   - group:
+//     songs: ["song-a", "song-b#variant"]
+//     marginColour: "#FF0000" (optional)
+//   - group: ["song-a", "song-b#variant"] (legacy)
 func (s *SetSongItem) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {
 	case yaml.ScalarNode:
@@ -68,16 +77,33 @@ func (s *SetSongItem) UnmarshalYAML(value *yaml.Node) error {
 		return nil
 
 	case yaml.MappingNode:
-		var raw struct {
-			Song  string   `yaml:"song"`
-			Group []string `yaml:"group"`
-		}
-		if err := value.Decode(&raw); err != nil {
-			return fmt.Errorf("failed to decode song mapping item: %w", err)
+		var songNode *yaml.Node
+		var groupNode *yaml.Node
+
+		for i := 0; i < len(value.Content)-1; i += 2 {
+			keyNode := value.Content[i]
+			valNode := value.Content[i+1]
+			if keyNode.Kind != yaml.ScalarNode {
+				continue
+			}
+
+			switch keyNode.Value {
+			case "song":
+				songNode = valNode
+			case "group":
+				groupNode = valNode
+			}
 		}
 
-		hasSong := strings.TrimSpace(raw.Song) != ""
-		hasGroup := len(raw.Group) > 0
+		songValue := ""
+		if songNode != nil {
+			if err := songNode.Decode(&songValue); err != nil {
+				return fmt.Errorf("failed to decode 'song' value: %w", err)
+			}
+		}
+
+		hasSong := strings.TrimSpace(songValue) != ""
+		hasGroup := groupNode != nil
 
 		switch {
 		case hasSong && hasGroup:
@@ -85,16 +111,70 @@ func (s *SetSongItem) UnmarshalYAML(value *yaml.Node) error {
 		case !hasSong && !hasGroup:
 			return fmt.Errorf("song mapping item must define either 'song' or 'group'")
 		case hasSong:
-			s.Song = raw.Song
+			s.Song = songValue
 			s.Group = nil
 		default:
+			group, err := parseSongGroupNode(groupNode)
+			if err != nil {
+				return err
+			}
 			s.Song = ""
-			s.Group = raw.Group
+			s.Group = group
 		}
 		return nil
 
 	default:
 		return fmt.Errorf("song item must be a string or object with 'song' or 'group'")
+	}
+}
+
+func parseSongGroupNode(groupNode *yaml.Node) (*SongGroup, error) {
+	if groupNode == nil {
+		return nil, fmt.Errorf("group value is required")
+	}
+
+	for groupNode != nil {
+		switch groupNode.Kind {
+		case yaml.DocumentNode:
+			if len(groupNode.Content) == 0 {
+				return nil, fmt.Errorf("group value is empty")
+			}
+			groupNode = groupNode.Content[0]
+			continue
+		case yaml.AliasNode:
+			if groupNode.Alias == nil {
+				return nil, fmt.Errorf("group alias is invalid")
+			}
+			groupNode = groupNode.Alias
+			continue
+		}
+		break
+	}
+
+	switch groupNode.Kind {
+	case yaml.SequenceNode:
+		// Legacy format: group: ["song-a", "song-b"]
+		var songs []string
+		if err := groupNode.Decode(&songs); err != nil {
+			return nil, fmt.Errorf("failed to decode group songs: %w", err)
+		}
+		if len(songs) == 0 {
+			return nil, fmt.Errorf("group must contain at least one song")
+		}
+		return &SongGroup{Songs: songs}, nil
+
+	case yaml.MappingNode:
+		var group SongGroup
+		if err := groupNode.Decode(&group); err != nil {
+			return nil, fmt.Errorf("failed to decode group object: %w", err)
+		}
+		if len(group.Songs) == 0 {
+			return nil, fmt.Errorf("group must define non-empty 'songs'")
+		}
+		return &group, nil
+
+	default:
+		return nil, fmt.Errorf("group must be an object with 'songs' (or a legacy array of song references)")
 	}
 }
 
@@ -608,6 +688,36 @@ func addErrorText(pdf *gofpdf.Fpdf, currentY *float64, pageWidth, pageHeight, ma
 	*currentY += errorHeight + spacing
 }
 
+type rgbColor struct {
+	r int
+	g int
+	b int
+}
+
+func parseHexColor(value string) (*rgbColor, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, fmt.Errorf("color cannot be empty")
+	}
+
+	trimmed = strings.TrimPrefix(trimmed, "#")
+
+	if len(trimmed) != 6 {
+		return nil, fmt.Errorf("color must be in #RRGGBB format")
+	}
+
+	parsed, err := strconv.ParseUint(trimmed, 16, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex color value")
+	}
+
+	return &rgbColor{
+		r: int((parsed >> 16) & 0xFF),
+		g: int((parsed >> 8) & 0xFF),
+		b: int(parsed & 0xFF),
+	}, nil
+}
+
 func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, gigFile string, spacing float64, imageOverride string) error {
 	// Create a map for quick song lookup that supports both single and multiple images
 	songMap := make(map[string]map[string]string)
@@ -639,6 +749,8 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 	pageWidth, pageHeight := pdf.GetPageSize()
 	margin := 10.0
 	footerHeight := 15.0
+	marginBandWidth := 1.0
+	marginBandRightGap := 1.0
 	availableWidth := pageWidth - 2*margin
 
 	// Track current page position
@@ -669,7 +781,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 		currentY += requiredHeight
 	}
 
-	renderSong := func(songName string, setName string) bool {
+	renderSong := func(songName string, setName string, marginBandColor *rgbColor) bool {
 		// Parse song name and image name
 		parts := strings.SplitN(songName, "#", 2)
 		actualSongName := parts[0]
@@ -805,6 +917,12 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 		}
 
 		// Add image without scaling (unless it was too wide)
+		if marginBandColor != nil {
+			marginBandX := margin - marginBandRightGap - marginBandWidth
+			pdf.SetFillColor(marginBandColor.r, marginBandColor.g, marginBandColor.b)
+			pdf.Rect(marginBandX, currentY, marginBandWidth, imageHeight, "F")
+		}
+
 		pdf.ImageOptions(finalImagePath, margin, currentY, imageWidth, imageHeight, false, gofpdf.ImageOptions{}, 0, "")
 		currentY += imageHeight + spacing
 		return true
@@ -825,10 +943,20 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 		for _, item := range set.Songs {
 			itemSongs := make([]string, 0, 1)
 			isGroup := false
+			var groupMarginColor *rgbColor
 
-			if len(item.Group) > 0 {
-				itemSongs = append(itemSongs, item.Group...)
+			if item.Group != nil && len(item.Group.Songs) > 0 {
+				itemSongs = append(itemSongs, item.Group.Songs...)
 				isGroup = true
+
+				if strings.TrimSpace(item.Group.MarginColour) != "" {
+					parsedColor, err := parseHexColor(item.Group.MarginColour)
+					if err != nil {
+						log.Printf("%s: Warning: Invalid marginColour '%s' for group in set '%s': %v", gigFile, item.Group.MarginColour, set.Name, err)
+					} else {
+						groupMarginColor = parsedColor
+					}
+				}
 			} else if strings.TrimSpace(item.Song) != "" {
 				itemSongs = append(itemSongs, item.Song)
 			}
@@ -843,7 +971,7 @@ func generatePDF(config *Config, gig *Gig, outputPath string, imagesDir string, 
 
 			itemRendered := false
 			for _, songName := range itemSongs {
-				if renderSong(songName, set.Name) {
+				if renderSong(songName, set.Name, groupMarginColor) {
 					itemRendered = true
 				}
 			}
